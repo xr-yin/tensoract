@@ -20,5 +20,6 @@ setup(
         'torch',
         'numpy',
         'scipy',
+        'tqdm',
     ],
 )
