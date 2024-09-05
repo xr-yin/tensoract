@@ -264,14 +264,28 @@ class LPTN(MPO):
             return exp
         
     def entropy(self,idx=None) -> torch.Tensor | float:
-        # TODO: test
+        r"""the (pesudo) von Neumann entanglement entropy
+
+        The (bipartite) entanglement entropy for a pure state divided into two subsytems A and B, is 
+        defined as :math:`Tr_A(\rho_A log(\rho_A))`, where :math:`\rho_A` is the reduced density matrix on 
+        subsystem A.
+        If we have a mixed state that is described by purification :math:`X_{k_1 k_2 \dots}^{i_1 i_2 \dots}` 
+        and the correspponding density operator :math:`\rho_{i_1 i_2 \dots}{i*_1 i*_2 \dots}`, the 
+        generalization to the entanglement entropy above would be :math:`Tr_A(\rho_A log(\rho_A))`, where 
+        :math:`\rho_A = Tr_B(\rho) = Tr_B (Tr_{k_1 k_2 \dots}(X X*))`. This function instead calculates 
+        :math: Tr_B (X X*). 
+        I emphasize that the zero entropy, which corresponds to trivial bond at the bipartition, naturally 
+        leads to a factorizable density matrix :math: \rho = \rho_A \otimes \rho_B. However, the reverse is 
+        not true, since a general unitary transformation acting on the the Kraus indices {k_1 k_2 \dots} can 
+        give rise to higher bond dimensions while leave the density matrix untouched. For this reason, the word 
+        'peusdo' was introduced in the name."""
         if idx is None:
             S = torch.empty(size=(self._N - 1,))
             self.orthonormalize(mode='right')
             for i in range(self._N - 1):
                 self[i], self[i+1] = qr_step(self[i], self[i+1])    # orthogonality cneter at i+1
                 mL = self[i+1].shape[0] # bond between i and i+1
-                s = torch.svdvals(self[i+1].reshape(mL, -1))
+                s = torch.linalg.svdvals(self[i+1].reshape(mL, -1))
                 s = s[s>1.e-15]
                 ss = s*s
                 S[i] = -torch.sum(ss*torch.log(ss))
