@@ -2,6 +2,7 @@
 representation according to the Lindblad master equation."""
 
 import torch
+from tqdm import trange
 from torch.linalg import matrix_exp, eigh, svd, qr
 from numpy.typing import ArrayLike
 
@@ -24,32 +25,34 @@ def mesolve(
         m_max: int,
         k_max: int,
         *,
-        e_ops: ArrayLike | list[ArrayLike] = None,
-        options: dict[str, Any] = None
+        e_ops: ArrayLike | list[ArrayLike] | None = None,
+        options: dict[str, Any] | None = None
 ) -> None:  
 
     psi = psi0.copy()
     lab = LindbladOneSite(psi, model)
+    
+    if options is None:
+        options = {}
 
-    Nsteps = options.get('Nsteps', 1)
     tol = options.get('tol', 1e-14)
     max_sweeps = options.get('max_sweeps', 1)
     store_final_state = options.get('store_final_state', True)
 
     # for now, only time-independent Hamiltonian is accepted
     # therefore only tf-t0 matters here
-    Nmeasure = round((tf-t0)/(dt*Nsteps))
+    N_tot = round((tf-t0)/(dt))
 
-    expects = torch.empty(size=(len(e_ops), Nmeasure, len(psi)), dtype=torch.complex128)
+    expects = torch.empty(size=(len(e_ops), N_tot, len(psi)), dtype=torch.complex128)
     # track growth of the *entanglement and the purity
-    # *what is the proper definition of the entanglement here?
-    purity = torch.empty(size=(Nmeasure,))
-    S_ent = torch.empty(size=(Nmeasure,))
+    purity = torch.empty(size=(N_tot,))
+    S_ent = torch.empty(size=(N_tot,))  # TODO: another entropy measure is needed
 
     center = len(psi) // 2
 
-    for i in range(Nmeasure):
-        lab.run(Nsteps, dt, tol, m_max, k_max, max_sweeps)
+    for i in trange(N_tot):
+
+        lab.run(1, dt, tol, m_max, k_max, max_sweeps=max_sweeps)   
         # in the end, I want results ordered as the input e_ops
         # results[0] = [[], [], ... , []]
         # (len(e_ops), temporal, spatial)
