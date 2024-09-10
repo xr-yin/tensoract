@@ -53,9 +53,8 @@ class SpinChain(object):
         return Ls
     
     def energy(self, psi):
+        """the energy (expectaton value of the Hamiltonian) of the system"""
         assert len(psi) == self._N
-        print([h.dtype for h in self.hduo])
-        print(psi.dtype)
         return torch.sum(psi.bond_expectation_value([h.reshape(2,2,2,2) for h in self.hduo]))
     
     def current(self, psi):
