@@ -6,7 +6,7 @@ __author__='Xianrui Yin'
 import torch
 from scipy import sparse
 
-from ..core import MPO
+from ..core import MPO, LPTN
 
 __all__ = ['BosonChain', 'BoseHubburd', 'DDBH']
 
@@ -46,14 +46,16 @@ class BosonChain(object):
         return Ls
     
     def Liouvillian(self, H, *Ls):
-        """
-        calculate the Liouvillian (super)operator
+        """calculate the Liouvillian (super)operator
 
-        Paras:
+        Parameters
+        ----------
             H: the Hamiltonian in the full Hilbert space
             *L: the Lindblad jump operator(s) in the full Hilbert space
 
-        Return: the Liouvillian operator as a sparse matrix
+        Return
+        ------
+        the Liouvillian operator as a sparse matrix
         """
         Lv = self._Hsup(H)
         for L in Ls:
@@ -61,16 +63,14 @@ class BosonChain(object):
         return Lv
     
     def _Dsup(self, L):
-        """
-        calculate the $L\otimes L^\bar - (L^\dagger L\otimes I + I\otimes L^T L^\bar)/2$
+        r"""calculate the :math:`L \otimes \bar{L} - (L^\dagger L\otimes I + I\otimes L^T \bar{L})/2`
         """
         D = self.d**self._N
         return sparse.kron(L,L.conj()) \
             - 0.5*(sparse.kron(L.conj().T@L, sparse.eye(D)) + sparse.kron(sparse.eye(D), L.T@L.conj()))
 
     def _Hsup(self, H):
-        """
-        calculate the Hamiltonian superoperator $-iH \otimes I + iI \otimes H^T$
+        """calculate the Hamiltonian superoperator :math:`-iH \otimes I + iI \otimes H^T`
         """
         D = self.d**self._N
         return - 1j*(sparse.kron(H,sparse.eye(D)) - sparse.kron(sparse.eye(D), H.T))
@@ -83,9 +83,10 @@ class BosonChain(object):
         return self._N
     
 class BoseHubburd(BosonChain):
-    """
-    1D Bose-Hubburd model with Hamiltonian
-    H = -t \sum (b)
+    r"""1D Bose-Hubburd model with Hamiltonian
+    .. math ::
+        H = - t \sum_{\langle i, j \rangle} (b_i^{\dagger} b_j + b_j^{\dagger} b_i)
+            + \frac{U}{2} \sum_i n_i (n_i - 1) - \mu \sum_i n_i
 
     Parameters
     ----------
@@ -157,8 +158,41 @@ class BoseHubburd(BosonChain):
         Os[-1] = O[:,0,None,:,:]
         return MPO(Os)
     
+    def energy(self, psi: LPTN):
+        """the energy (expectaton value of the Hamiltonian) of the system"""
+        assert len(psi) == self._N
+        d = psi.physical_dims[0]
+        return torch.sum(psi.bond_expectation_value([h.reshape(d,d,d,d).to(psi.dtype) for h in self.hduo])).real
+    
+    def fluctuation(self, psi: LPTN, idx: int | None=None, *, normalize=True):
+        """the (normalized) fluctuations in the occupation number 
+        
+        Parameters
+        ----------
+            psi : LPTN
+                the state whose occupation number fluctuation is to be calculated
+            idx : int or None
+                if idx is None, compute the fluctuations on every site,
+                if idx is int, compute the fluctuation only on this site
+        
+        TODO: calculate the fluctuation of the total occupation number :math:`N = \sum_i n_i` 
+        and :math:`\delta N^2 = \langle N^2 \rangle -\langle N \rangle`
+        """
+        assert len(psi) == self._N
+        num = self.num.to(dtype=psi.dtype)
+        nums, nums_sq = psi.measure([num, num@num], idx=idx, drop_imag=True)
+        if normalize:
+            return (nums_sq - nums**2) / nums
+        else:
+            return nums_sq - nums**2
+    
 class DDBH(BoseHubburd):
-    """class for driven-dissipative Bose-Hubburd model"""
+    r"""class for driven-dissipative Bose-Hubburd model
+    .. math ::
+    H = \sum_{j} \left[ -\mu b_j^\dagger b_j 
+        + \frac{U}{2} b_j^\dagger b_j^\dagger b_j b_j 
+        + F (b_j^\dagger + b_j \right]
+        - \t \sum_{\langle i, j \rangle} (b_i^\dagger b_j + b_j^\dagger b_i)"""
     def __init__(self, 
                  N: int, 
                  d: int, 
@@ -166,10 +200,11 @@ class DDBH(BoseHubburd):
                  U: float, 
                  mu: float, 
                  F: float, 
-                 gamma: float) -> None:
+                 gamma: float, 
+                 dtype: torch.dtype=torch.double) -> None:
         # dtype must be set to double here to ensure accuracy when prepare the 
         # unitary time evolution operator and the Kraus operators
-        super().__init__(N, d, t, U, mu, dtype=torch.double)
+        super().__init__(N, d, t, U, mu, dtype=dtype)
         self.F = F
         self.gamma = gamma
 
