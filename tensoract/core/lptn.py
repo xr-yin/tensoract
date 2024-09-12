@@ -160,8 +160,8 @@ class LPTN(MPO):
             res = torch.tensordot(amp.conj().permute(0,1,4,5,2,3), opc, dims=6)
             return res.real if drop_imag else res
         
-    def correlations(self, A, B, i) -> torch.Tensor:
-        """calculate the correlation function C(j) = <A_i*B_j> for j >=i
+    def correlations(self, A, B, i, connected: bool=False) -> torch.Tensor:
+        """calculate the correlation function C(i,j) = <A_i*B_j> for j >=i
         
         Parameters
         ----------
@@ -171,6 +171,9 @@ class LPTN(MPO):
             operator acting on site j
         i : int
             site index
+        connected : bool
+            if True, return the connected correlation function
+            C_conn(i,j) = <A_i*B_j> - <A_i>*<B_j>
 
         Return
         ------
@@ -198,9 +201,11 @@ class LPTN(MPO):
             # update Alice
             Alice = torch.tensordot(Alice, amp, dims=([1], [0]))
             Alice = torch.tensordot(amp.conj(), Alice, dims=([0,2,3], [0,2,3]))
+        if connected:
+            corrs -= self.site_expectation_value(A, idx=i) * self.site_expectation_value([B]*N)[i:]
         return corrs
         
-    def measure(self, op_list: list, *, idx=None, drop_imag: bool=False) -> list[torch.Tensor] | list:
+    def measure(self, op_list: list, *, idx: int | None=None, drop_imag: bool=False) -> list[torch.Tensor] | list:
         """Perform measurements successively on each site
 
         When only one operator is measured, one can call site_expectation_value().
@@ -299,14 +304,17 @@ class LPTN(MPO):
             ss = s*s
             return -torch.sum(ss*torch.log(ss))
 
-    def to_density_matrix(self) -> torch.Tensor:
+    def to_density_matrix(self, full=True) -> torch.Tensor:
         r"""density matrix for the locally purified tensor network
-        \rho = X  X^\dagger
+        :math:`\rho = X  X^\dagger`
         """
-        return mul(self, self.hc()).to_matrix()
+        if full:
+            return mul(self, self.hc()).to_matrix()
+        else:
+            return mul(self, self.hc())
     
     def rho2trace(self):
-        """tr(rho**2) = trace(rho*rho) = ||rho||_F ^2"""
+        r""":math:`Tr(\rho^2) = Tr(\rho \cdot \rho) = ||rho||_F^2`"""
         rho = mul(self, self.hc())
         return inner(rho, rho).real
     
@@ -327,7 +335,7 @@ class LPTN(MPO):
             norms[i] = torch.linalg.norm(psi.to_density_matrix())**2        
         return norms
 
-def compress(psi:LPTN, tol:float, m_max:int, max_sweeps=2) -> tuple[LPTN,float]:
+def compress(psi:LPTN, tol:float, m_max:int, max_sweeps:int=2) -> tuple[LPTN,float]:
     """variationally compress a LPTN by optimizing the trace norm |X'-X|, where X' is 
     the guess state
 
@@ -389,7 +397,7 @@ def compress(psi:LPTN, tol:float, m_max:int, max_sweeps=2) -> tuple[LPTN,float]:
         print(f'overlap after the {n+1} sweep(s): {overlap.item()}')
     return phi, overlap.item()
 
-def _load_right_bond_tensors(psi:LPTN, phi:LPTN):
+def _load_right_bond_tensors(psi:LPTN, phi:LPTN) -> list[torch.Tensor]:
     """Calculate the right bond tensors while contracting two LPTNs.
     RBT[i] is to the right of the LPTN[i].
 
