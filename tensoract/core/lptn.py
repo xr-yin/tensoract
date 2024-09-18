@@ -313,8 +313,9 @@ class LPTN(MPO):
         else:
             return mul(self, self.hc())
     
-    def rho2trace(self):
-        r""":math:`Tr(\rho^2) = Tr(\rho \cdot \rho) = ||rho||_F^2`"""
+    def purity(self):
+        r"""The purity of the density operator
+        :math:`Tr(\rho^2) = Tr(\rho \cdot \rho) = ||rho||_F^2`"""
         rho = mul(self, self.hc())
         return inner(rho, rho).real
     
