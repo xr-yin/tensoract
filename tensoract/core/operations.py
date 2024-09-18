@@ -1,7 +1,8 @@
 import torch
-
 from torch.linalg import qr
+
 from copy import deepcopy
+import logging
 
 from .projection import RightBondTensors, LeftBondTensors, ProjTwoSite
 
@@ -250,6 +251,7 @@ def apply_mpo(O, psi, tol: float, m_max: int, max_sweeps: int = 2, overwrite: bo
         norm = torch.tensordot(norm, O[0], dims=([1,3],[2,1]))
         norm = torch.tensordot(norm, psi[0], dims=([2,4,1],[1,2,3]))
         norm = norm.item()
+        logging.info(f'norm after {n+1} sweep(s): {norm}')
 
     if overwrite:
         psi.As = phi.As
