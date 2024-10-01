@@ -6,7 +6,8 @@ __author__='Xianrui Yin'
 
 import torch
 
-from typing import Self
+from typing import Self, overload
+from collections.abc import Sequence
 
 from .mpo import MPO
 from .operations import merge, split, mul, qr_step, inner
@@ -77,18 +78,27 @@ class LPTN(MPO):
     @property
     def krauss_dims(self) -> torch.Tensor:
         return torch.tensor([A.shape[3] for A in self])
+    
+    @overload
+    def site_expectation_value(self, op: torch.Tensor, *, idx: int, drop_imag=False) -> torch.Tensor: ...
+    """if `idx` is an integer, `op` must be a single operator for this specific physical site."""
 
-    def site_expectation_value(self, op, *, idx=None, drop_imag=False) -> torch.Tensor:
+    @overload
+    def site_expectation_value(self, op: Sequence[torch.Tensor], *, idx: None, drop_imag=False) -> torch.Tensor: ...
+    """if `idx` is None, `op` must be a list of ordered local operators for every physical site."""
+
+    def site_expectation_value(self, 
+                               op : torch.Tensor | Sequence[torch.Tensor], 
+                               *, 
+                               idx: int | None=None, 
+                               drop_imag=False) -> torch.Tensor:
         """
         Parameters
         ----------
         op : list or NDArray
             list of local operators or a single local operator
         idx : int or None
-            if `idx` is None, `op` must be a list of ordered local operators for 
-            every physical site.
-            if `idx` is an integer, `op` must be a single operator for this specific 
-            physical site.
+            index of the site for calculating the expectation value <O_i>
         drop_imag : bool
             if True, only returns the real part of the expectation value. This is 
             desired when the operators are Hermitian.
@@ -119,18 +129,27 @@ class LPTN(MPO):
             opc = torch.tensordot(amp, op, dims=([2],[1])) # apply local operator
             res = torch.tensordot(amp.conj(), opc.swapaxes(2,3), dims=4)
             return res.real if drop_imag else res
-        
-    def bond_expectation_value(self, op, *, idx=None, drop_imag: bool=False) -> torch.Tensor:
+
+    @overload
+    def bond_expectation_value(self, op: Sequence[torch.Tensor], *, idx: None, drop_imag: bool=False) -> torch.Tensor: ...
+    """if `idx` is None, `op` must be a list of ordered two-local operators for every pair of neighbouring site."""
+
+    @overload
+    def bond_expectation_value(self, op: torch.Tensor, *, idx: int, drop_imag: bool=False) -> torch.Tensor: ...
+    """if `idx` is an integer, `op` must be a single two-local operator for this specific pair of neighbouring site."""
+
+    def bond_expectation_value(self, 
+                               op: torch.Tensor | Sequence[torch.Tensor], 
+                               *, 
+                               idx: int | None=None, 
+                               drop_imag: bool=False) -> torch.Tensor:
         """
         Parameters
         ----------
         op : list or torch.Tensor
             list of local two-site operators or a single local two-site operator
-        idx : int
-            if `idx` is None, `op` must be a list of ordered two-local operators 
-            for every pair of neighbouring site.
-            if `idx` is an integer, `op` must be a single two-local operator for 
-            this specific pair of neighbouring site.
+        idx : int or None
+            the index of the left site for calculating the expectation value <O_i O_i+1>
         drop_imag : bool
             if True, only returns the real part of the expectation value. This is 
             desired when the operators are Hermitian.
@@ -204,8 +223,8 @@ class LPTN(MPO):
         if connected:
             corrs -= self.site_expectation_value(A, idx=i) * self.site_expectation_value([B]*N)[i:]
         return corrs
-        
-    def measure(self, op_list: list, *, idx: int | None=None, drop_imag: bool=False) -> list[torch.Tensor] | list:
+
+    def measure(self, op_list: list, *, idx: int | None=None, drop_imag: bool=False) -> list[torch.Tensor]:
         """Perform measurements successively on each site
 
         When only one operator is measured, one can call site_expectation_value().
@@ -228,10 +247,10 @@ class LPTN(MPO):
 
         Return
         ----------
-        exp : Tensor, exp[i] stores the measurement results for operator op_list[i]
+        exp : list, exp[i] stores the measurement results for operator op_list[i]
 
-            if `idx` is None, a 2D Tensor of size (len(op_list), N) is returned
-            if `idx` is an integer, a 1D Tensor of size (len(op_list),) is returned
+            if `idx` is None, the elements of the list are 1D Tensor of size (N,)
+            if `idx` is an integer, the elements of the list are 0D Tensor (single number)
 
         Note
         ----
@@ -268,7 +287,7 @@ class LPTN(MPO):
                     exp[j] = exp[j].real
             return exp
         
-    def entropy(self,idx=None) -> torch.Tensor | float:
+    def entropy(self,idx: int | None=None) -> torch.Tensor:
         r"""the (pesudo) von Neumann entanglement entropy
 
         The (bipartite) entanglement entropy for a pure state divided into two subsytems A and B, is 
