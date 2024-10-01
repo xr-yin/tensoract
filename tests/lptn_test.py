@@ -27,11 +27,11 @@ class TestLPTN(unittest.TestCase):
         self.psi.orthonormalize('right')
         self.assertAlmostEqual(torch.trace(self.psi.to_density_matrix()).item(), 1, 12)
 
-    def test_rho2trace(self):
+    def test_purity(self):
         psi = self.psi
         psi.orthonormalize('right')
         self.assertTrue(torch.isclose(torch.linalg.norm(psi.to_density_matrix())**2, 
-                                      psi.rho2trace()))
+                                      psi.purity()))
 
     def setUp(self) -> None:
 
