@@ -6,6 +6,8 @@ __author__='Xianrui Yin'
 import torch
 from scipy import sparse
 
+from collections.abc import Sequence, Iterable
+
 from ..core import MPO, LPTN
 
 __all__ = ['BosonChain', 'BoseHubburd', 'DDBH']
@@ -199,8 +201,8 @@ class DDBH(BoseHubburd):
                  t: float, 
                  U: float, 
                  mu: float, 
-                 F: float, 
-                 gamma: float, 
+                 F: float | Sequence[float], 
+                 gamma: float | Sequence[float], 
                  dtype: torch.dtype=torch.double) -> None:
         # dtype must be set to double here to ensure accuracy when prepare the 
         # unitary time evolution operator and the Kraus operators
@@ -212,16 +214,19 @@ class DDBH(BoseHubburd):
     def hduo(self):
         bt, bn = self.bt, self.bn
         n, id = self.num, self.bid
-        t = self.t
+        t, U, mu, F = self.t, self.U, self.mu, self.F
         h_list = []
+        if not isinstance(F, Iterable):
+            F = [F] * self._N
         for i in range(self._N - 1):
-            UL = UR = 0.5 * self.U
-            muL = muR = 0.5 * self.mu
-            FL = FR = 0.5 * self.F
+            UL = UR = 0.5 * U
+            muL = muR = 0.5 * mu
+            FL = 0.5 * F[i]
+            FR = 0.5 * F[i+1]
             if i == 0: # first bond
-                UL, muL, FL = self.U, self.mu, self.F
+                UL, muL, FL = U, mu, F[i]
             if i + 1 == self._N - 1: # last bond
-                UR, muR, FR = self.U, self.mu, self.F
+                UR, muR, FR = U, mu, F[i+1]
             h = - t * (torch.kron(bt, bn) + torch.kron(bn, bt)) \
                 - muL * torch.kron(n, id) \
                 - muR * torch.kron(id, n) \
@@ -242,21 +247,30 @@ class DDBH(BoseHubburd):
         t, U, mu, F = self.t, self.U, self.mu, self.F
         bt, bn= self.bt, self.bn
         n, nu, id = self.num, self.nu, self.bid
-        diag = 0.5*U*n@(n-id) - mu*n + F*bt + F.conjugate()*bn
-        with torch.no_grad():
-            row1 = torch.stack([id, nu, nu, nu], dim=0)
-            row2 = torch.stack([bn, nu, nu, nu], dim=0)
-            row3 = torch.stack([bt, nu, nu, nu], dim=0)
-            row4 = torch.stack([diag, -t*bt, -t*bn, id], dim=0)
-        O = torch.stack([row1, row2, row3, row4], dim=0)
-        Os = [O] * self._N
-        Os[0] = O[None,-1,:,:,:]
-        Os[-1] = O[:,0,None,:,:]
+        if not isinstance(F, Iterable):
+            F = [F] * self._N
+        Os = []
+        for i in range(self._N):
+            diag = 0.5*U*n@(n-id) - mu*n + F[i]*bt + F[i].conjugate()*bn
+            with torch.no_grad():
+                row1 = torch.stack([id, nu, nu, nu], dim=0)
+                row2 = torch.stack([bn, nu, nu, nu], dim=0)
+                row3 = torch.stack([bt, nu, nu, nu], dim=0)
+                row4 = torch.stack([diag, -t*bt, -t*bn, id], dim=0)
+            O = torch.stack([row1, row2, row3, row4], dim=0)
+            if i == 0:
+                O= O[None,-1,:,:,:]
+            if i == self._N-1:
+                O = O[:,0,None,:,:]
+            Os.append(O)
         return MPO(Os)
     
     @property
     def Lloc(self):
-        return [self.gamma**0.5 * self.bn] * self._N
+        if not isinstance(self.gamma, Iterable):
+            return [self.gamma**0.5 * self.bn] * self._N
+        else:
+            return [gamma**0.5 * self.bn for gamma in self.gamma]
     
     @property
     def Liouvillian(self):

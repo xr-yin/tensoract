@@ -31,7 +31,12 @@ class TestBosonChains(unittest.TestCase):
             model = DDBH(N.item(), d.item(), t, U, mu, F.item(), gamma)
             # numpy uses double precesion
             self.assertTrue(torch.allclose(model.mpo.to_matrix(), 
-                                        torch.from_numpy(model.H_full().toarray())))
+                                           torch.from_numpy(model.H_full().toarray())))
+            F = torch.rand(size=(N,)).numpy()
+            model = DDBH(N.item(), d.item(), t, U, mu, F, gamma)
+            # numpy uses double precesion
+            self.assertTrue(torch.allclose(model.mpo.to_matrix(), 
+                                           torch.from_numpy(model.H_full().toarray())))
 
 
 if __name__ == '__main__':
