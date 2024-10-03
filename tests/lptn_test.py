@@ -47,7 +47,7 @@ class TestMeasurements(unittest.TestCase):
 
         device, dtype = self.device, self.dtype
 
-        N = torch.randint(3,8,size=(1,))
+        N = torch.randint(3,7,size=(1,))
         sz = torch.tensor([[1., 0.], [0., -1.]], device=device, dtype=dtype)
         
         for polar, val in [('+z', 1.), ('-z', -1.), ('+x', 0.)]:
@@ -63,6 +63,7 @@ class TestMeasurements(unittest.TestCase):
 
         self.phy_dims = torch.randint(2, 5, size=(N,))
         psi = LPTN.gen_random_state(N, 9, 9, self.phy_dims, dtype=dtype, device=device)
+        psi_copy = psi.copy()
 
         # local case
         idx = torch.randint(N,size=(1,))
@@ -73,6 +74,7 @@ class TestMeasurements(unittest.TestCase):
         self.assertAlmostEqual(complex_expect.imag.item(), 0.)
         self.assertTrue(torch.allclose(psi.site_expectation_value(sz, idx=idx, drop_imag=True), 
                                       complex_expect.real))
+        self.assertTrue(torch.allclose(psi.to_matrix(), psi_copy.to_matrix()))
         
         # global case
         op_list = []
@@ -84,6 +86,7 @@ class TestMeasurements(unittest.TestCase):
                                        torch.zeros(size=(N,), device=device, dtype=torch.double)))
         self.assertTrue(torch.allclose(psi.site_expectation_value(op_list, drop_imag=True), 
                                        complex_expect.real))    # check the real parts agree
+        self.assertTrue(torch.allclose(psi.to_matrix(), psi_copy.to_matrix()))
 
     def test_bond(self):
         pass
@@ -93,10 +96,11 @@ class TestMeasurements(unittest.TestCase):
 
     def test_measure(self):
         
-        N = torch.randint(3,8,size=(1,))
+        N = torch.randint(3,7,size=(1,))
         d = torch.randint(2,5,size=(1,))
         dtype = self.dtype
         psi = LPTN.gen_random_state(N, 9, 9, d.tile((N,)), dtype=dtype)
+        psi_copy = psi.copy()
 
         num = torch.randint(1,4,size=(1,)) # number of operators
         if torch.rand(1) > 0.55:
@@ -118,7 +122,8 @@ class TestMeasurements(unittest.TestCase):
         # test global case
         exp = psi.measure(op_list, drop_imag=drop_imag)
         for op, v in zip(op_list, exp):
-            self.assertTrue(torch.allclose(psi.site_expectation_value([op]*N, drop_imag=drop_imag), v))
+            self.assertTrue(torch.allclose(psi.site_expectation_value([op]*N, drop_imag=drop_imag), v))        
+        self.assertTrue(torch.allclose(psi.to_matrix(), psi_copy.to_matrix()))
     
     def setUp(self) -> None:
         self.device = 'cpu'
