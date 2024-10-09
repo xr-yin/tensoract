@@ -161,6 +161,8 @@ class MPO(object):
         """call torch.tensor.to()"""
         for i in range(self._N):
             self[i] = self[i].to(*args, **kwargs)
+        self.device = self[0].device
+        self.dtype = self[0].dtype
         
     def __len__(self):
         return self._N
