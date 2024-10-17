@@ -9,14 +9,13 @@ import torch
 
 import logging
 
-from ..core.lptn import LPTN
-from ..core.operations import merge, split
+from ..core import LPTN, merge, split
 
 __all__ = ['cost', 'optimize', 'single_shot_disentangle']
 
 def cost(u, theta):
     """cost function, sum of the quadrad of singular values
-    u = id
+
         i     j
        _|_   _|_
     ---| theta |---
@@ -35,8 +34,7 @@ def cost(u, theta):
     return torch.trace(Utheta2 @ Utheta2.T.conj())
 
 def optimize(theta: torch.Tensor, U_start: torch.tensor=None, eps: float = 1e-9, max_iter: int = 20):
-    """Disentangle the effective two-site wave function in the Schmidt 
-    basis
+    """Disentangle the effective two-site wave function in the Schmidt basis
     
         i     j
        _|_   _|_
@@ -64,9 +62,9 @@ def optimize(theta: torch.Tensor, U_start: torch.tensor=None, eps: float = 1e-9,
 
     Return
     ----------
-    theta : ndarray
+    theta : Tensor
         optimized effective two-site wave function
-    U : ndarray, ndim=2
+    U : Tensor, ndim=2
         optimized unitary matrix disentangling theta, this U can be saved 
         for later disentangle step (e.g. after another time step)
     s2 : optimized entropy
@@ -153,25 +151,40 @@ def optimize_a(theta, eps: float = 1e-9, max_iter: int = 20):
 
     return torch.swapdims(theta.reshape(ml,di,mr,dj,kl,kr), 1, 2), s_new
 
-def single_shot_disentangle(psi:LPTN, tol:float, m_max:int, eps:float, max_iter:int, max_sweeps:int=1):
-    N = len(psi)
+def single_shot_disentangle(psi:LPTN, tol:float, m_max:int, eps:float, max_iter:int):
+    """a single (back and forth) sweep of the system
+    
+    Parameters
+    ----------
+    psi : LPTN
+        the state to be disentangled
+    tol : float
+        largest discarded weights
+    m_max : int
+        largest matrix bond dimension
+    eps : float
+        the difference in the second Renyi entropy in two consecutive 
+        iterations. The iteration stops if the difference is smaller 
+        than eps
+    max_iter: int
+        maximun iterations
+    
+    """
+    Nbond = len(psi)-1
     psi.orthonormalize('right')
-    for nsweep in range(max_sweeps):
-        for i in range(N-1):
-            j = i+1
-            logging.info(f'bond: {i}-{j}')
-            theta = merge(psi[i],psi[j])
-            #kl, kr = theta.shape[4:]    # debug
-            theta1, Uh, S2 = optimize(theta, eps=eps, max_iter=max_iter)
-            #logging.debug(torch.linalg.norm(theta1 - torch.tensordot(theta, Uh.reshape(kl,kr,kl,kr).conj(), dims=[(4,5),(2,3)])))
-            logging.debug(f'entropy at bond {i}-{j}: {S2}')
-            psi[i], psi[j] = split(theta1, 'right', tol, m_max)
-        for j in range(N-1,0,-1):
-            i = j-1
-            logging.info(f'bond: {i}-{j}')
-            theta = merge(psi[i],psi[j])
-            #kl, kr = theta.shape[4:]    # debug
-            theta1, Uh, S2 = optimize(theta, eps=eps, max_iter=max_iter)
-            #logging.debug(torch.linalg.norm(theta1 - torch.tensordot(theta, Uh.reshape(kl,kr,kl,kr).conj(), dims=[(4,5),(2,3)])))
-            logging.debug(f'entropy at bond {i}-{j}: {S2}')
-            psi[i], psi[j] = split(theta1, 'left', tol, m_max)
+    for i in range(Nbond):
+        j = i+1
+        theta = merge(psi[i],psi[j])
+        #kl, kr = theta.shape[4:]    # debug
+        theta1, Uh, S2 = optimize(theta, eps=eps, max_iter=max_iter)
+        #logging.debug(torch.linalg.norm(theta1 - torch.tensordot(theta, Uh.reshape(kl,kr,kl,kr).conj(), dims=[(4,5),(2,3)])))
+        logging.debug(f'entropy at bond {i}-{j}: {S2}')
+        psi[i], psi[j] = split(theta1, 'right', tol, m_max)
+    for j in range(Nbond,0,-1):
+        i = j-1
+        theta = merge(psi[i],psi[j])
+        #kl, kr = theta.shape[4:]    # debug
+        theta1, Uh, S2 = optimize(theta, eps=eps, max_iter=max_iter)
+        #logging.debug(torch.linalg.norm(theta1 - torch.tensordot(theta, Uh.reshape(kl,kr,kl,kr).conj(), dims=[(4,5),(2,3)])))
+        logging.debug(f'entropy at bond {i}-{j}: {S2}')
+        psi[i], psi[j] = split(theta1, 'left', tol, m_max)
