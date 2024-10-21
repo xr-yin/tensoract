@@ -280,3 +280,44 @@ class DDBH(BoseHubburd):
                 'F': self.F, 
                 'gamma': self.gamma, 
                 'dtype': self.dtype}
+    
+class InfiniteDDBH(DDBH):
+
+    def __init__(self, 
+                 N: int, 
+                 d: int, 
+                 t: float, 
+                 U: float, 
+                 mu: float, 
+                 F: float | Sequence[float], 
+                 gamma: float | Sequence[float], 
+                 dtype: torch.dtype = torch.double) -> None:
+        super().__init__(N, d, t, U, mu, F, gamma, dtype)
+
+    @property
+    def hduo(self):
+        bt, bn = self.bt, self.bn
+        n, id = self.num, self.bid
+        t, U, mu, F = self.t, self.U, self.mu, self.F
+        h_list = []
+        if not isinstance(F, Iterable):
+            F = [F] * self._N
+        for i in range(self._N):    # N terms instead of N-1 terms
+            UL = UR = 0.5 * U
+            muL = muR = 0.5 * mu
+            FL = 0.5 * F[i]
+            FR = 0.5 * F[i+1]
+            h = - t * (torch.kron(bt, bn) + torch.kron(bn, bt)) \
+                - muL * torch.kron(n, id) \
+                - muR * torch.kron(id, n) \
+                + UL * torch.kron(n@(n-id), id)/2 \
+                + UR * torch.kron(id, n@(n-id))/2 \
+                + FL * torch.kron(bt, id) \
+                + FR * torch.kron(id, bt) \
+                + FL.conjugate() * torch.kron(bn, id) \
+                + FR.conjugate() * torch.kron(id, bn)
+            # h is a matrix with legs ``(i, j), (i*, j*)``
+            # reshape to a tensor with legs ``i, j, i*, j*``
+            # reshape is carried out in evolution algorithms after exponetiation
+            h_list.append(h)
+        return h_list
