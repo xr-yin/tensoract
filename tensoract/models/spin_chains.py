@@ -1,8 +1,3 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
-__author__='Xianrui Yin'
-
 import torch
 from scipy import sparse
 

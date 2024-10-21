@@ -1,14 +1,9 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 """Common interface for applying projected matrix product operators onto local MPO (LPTN) tensor.
 
     This class acts as an abstract interface between matrix product operators and iterative 
     solvers (for our purposes, mainly eigensolvers), providing methods to perform MPO-MPO/LPTN 
     and adjoint MPO-MPO/LPTN products
 """
-
-__author__='Xianrui Yin'
 
 import torch
 from torch import Tensor, tensordot
