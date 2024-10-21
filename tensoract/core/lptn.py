@@ -55,7 +55,7 @@ class LPTN(MPO):
             A[0,0,1,0] = 1.
         else:
             A[0,0,0,0] = A[0,0,1,0] = 0.5**0.5
-        return cls([A]*N)
+        return cls([A.clone() for i in range(N)])
     
     @classmethod
     def gen_random_state(cls,

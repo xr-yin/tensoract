@@ -69,7 +69,7 @@ class MPO(object):
         return cls(As)
     
     def copy(self) -> Self:
-        return self.__class__(self.As)
+        return self.__class__([A.clone() for A in self])
 
     @property
     def bond_dims(self) -> torch.Tensor:
