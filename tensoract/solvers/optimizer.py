@@ -114,43 +114,6 @@ def optimize(theta: torch.Tensor, U_start: torch.tensor=None, eps: float = 1e-9,
 
     return torch.swapdims(theta.reshape(ml,di,mr,dj,kl,kr), 1, 2), Uh, s_new
 
-def optimize_a(theta, eps: float = 1e-9, max_iter: int = 20):
-
-    ml, mr, di, dj, kl, kr = theta.shape
-    theta = torch.reshape(theta.swapdims(1,2), (ml*di, mr*dj, kl, kr))
-    # theta has legs ml, mr, kl, kr 
-
-    s_old = torch.inf
-    Utheta = theta
-
-    for i in range(max_iter):
-        # compute the  contraction
-        rhoL = torch.tensordot(Utheta, theta.conj(), dims=[(1,3), (1,3)])
-        dS = torch.tensordot(rhoL, Utheta.conj(), dims=[(0,1), (0,2) ])
-        dS = torch.tensordot(dS, theta, dims=[(0,2),(0,1)])    # dS has legs kl, kr, kl*, kr*
-        dS = torch.reshape(dS, (kl*kr, kl*kr))
-
-        # compute the unitary from a SVD of dS
-        w, _, vh = torch.linalg.svd(dS, full_matrices=False)
-        uh = w @ vh
-
-        # split out the legs
-        uh = torch.reshape(uh, (kl,kr,kl,kr))
-        # update theta
-        theta, Utheta = Utheta, torch.tensordot(theta, uh.conj(), dims=([2,3],[2,3]))
-
-        # sum of quadrad of all singular values (singular values square to probability)
-        s2 = torch.real_if_close(torch.trace(dS))
-        # compute second Renyi entropy
-        s_new = -torch.log(s2)
-
-        if abs(s_old-s_new) < eps:
-            break
-
-        s_old = s_new
-
-    return torch.swapdims(theta.reshape(ml,di,mr,dj,kl,kr), 1, 2), s_new
-
 def single_shot_disentangle(psi:LPTN, tol:float, m_max:int, eps:float, max_iter:int):
     """a single (back and forth) sweep of the system
     
