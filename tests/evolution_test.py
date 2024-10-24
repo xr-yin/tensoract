@@ -37,8 +37,8 @@ class TestDetach(unittest.TestCase):
             u = mul(lab.uMPO[1], lab.uMPO[0])
             v = mul(lab.uMPO[0], lab.uMPO[1])
             
-            logging.info(f"dt={dt}: [H_o, H_e]: {torch.linalg.norm(u.to_matrix() - v.to_matrix())}")
-            logging.info(f"dt={dt}: H_trotter-H_exact: {torch.linalg.norm(u.to_matrix().cpu() - matrix_exp(torch.from_numpy(-1j*dt*model.H_full.toarray())))}")
+            logging.info(f"dt={dt}: [H_o, H_e]: {torch.dist(u.to_matrix(), v.to_matrix())}")
+            logging.info(f"dt={dt}: H_trotter-H_exact: {torch.dist(u.to_matrix().cpu(), matrix_exp(torch.from_numpy(-1j*dt*model.H_full.toarray())))}")
             # check unitarity
             self.assertTrue(torch.allclose(u.to_matrix() @ u.to_matrix().adjoint(), torch.eye(2**N, dtype=dtype, device=device)))
         
@@ -57,8 +57,8 @@ class TestDetach(unittest.TestCase):
             u = mul(lab.uMPO[1], lab.uMPO[0])
             v = mul(lab.uMPO[0], lab.uMPO[1])
             
-            logging.info(f"dt={dt}: [H_o, H_e]: {torch.linalg.norm(u.to_matrix() - v.to_matrix())}")
-            logging.info(f"dt={dt}: H_trotter-H_exact: {torch.linalg.norm(u.to_matrix().cpu() - matrix_exp(torch.from_numpy(-1j*dt*model.H_full().toarray())))}")
+            logging.info(f"dt={dt}: [H_o, H_e]: {torch.dist(u.to_matrix(), v.to_matrix())}")
+            logging.info(f"dt={dt}: H_trotter-H_exact: {torch.dist(u.to_matrix().cpu(), matrix_exp(torch.from_numpy(-1j*dt*model.H_full().toarray())))}")
             # check unitarity
             self.assertTrue(torch.allclose(u.to_matrix() @ u.to_matrix().adjoint(), torch.eye(d**N, dtype=dtype, device=device)))
 
