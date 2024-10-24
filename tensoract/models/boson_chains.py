@@ -1,7 +1,7 @@
 import torch
 from scipy import sparse
 
-from collections.abc import Sequence, Iterable
+from collections.abc import Sequence
 
 from ..core import MPO, LPTN
 
@@ -211,7 +211,7 @@ class DDBH(BoseHubburd):
         n, id = self.num, self.bid
         t, U, mu, F = self.t, self.U, self.mu, self.F
         h_list = []
-        if not isinstance(F, Iterable):
+        if not isinstance(F, Sequence):
             F = [F] * self._N
         for i in range(self._N - 1):
             UL = UR = 0.5 * U
@@ -242,7 +242,7 @@ class DDBH(BoseHubburd):
         t, U, mu, F = self.t, self.U, self.mu, self.F
         bt, bn= self.bt, self.bn
         n, nu, id = self.num, self.nu, self.bid
-        if not isinstance(F, Iterable):
+        if not isinstance(F, Sequence):
             F = [F] * self._N
         Os = []
         for i in range(self._N):
@@ -262,8 +262,9 @@ class DDBH(BoseHubburd):
     
     @property
     def Lloc(self):
-        if not isinstance(self.gamma, Iterable):
-            return [self.gamma**0.5 * self.bn] * self._N
+        """Local Linblad jump operators describing photon losses"""
+        if not isinstance(self.gamma, Sequence):
+            return self.gamma**0.5 * self.bn
         else:
             return [gamma**0.5 * self.bn for gamma in self.gamma]
     
@@ -300,7 +301,7 @@ class InfiniteDDBH(DDBH):
         n, id = self.num, self.bid
         t, U, mu, F = self.t, self.U, self.mu, self.F
         h_list = []
-        if not isinstance(F, Iterable):
+        if not isinstance(F, Sequence):
             F = [F] * self._N
         for i in range(self._N):    # N terms instead of N-1 terms
             UL = UR = 0.5 * U
