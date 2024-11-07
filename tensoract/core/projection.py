@@ -8,7 +8,41 @@
 import torch
 from torch import Tensor, tensordot
 
-__all__ = ["ProjTwoSite", "LeftBondTensors", "RightBondTensors"]
+__all__ = ["ProjOneSite", "ProjTwoSite", "LeftBondTensors", "RightBondTensors"]
+
+class ProjOneSite(object):
+    r"""Project MPO onto one site (the orthogonality center)
+
+                   <bra|
+    
+    /```\----0        2        0----/```\
+    |   |           __|__           |   |
+    | L |----1  0---| M |---1  1----| R |
+    |   |           ``|``           |   |
+    \___/----2        3        2----\___/
+
+                   |ket>
+
+    Parameters
+    ----------
+    L : ndarray, ndim==3
+        left bond tensor
+    R : ndarray, ndim==3
+        right bond tensor
+    M : ndarray, ndim==4
+        center local MPO tensor
+    """
+
+    def __init__(self, L: Tensor, R: Tensor, M: Tensor) -> None:
+        self.L = L
+        self.R = R
+        self.M = M
+
+    def _matvec(self, x: Tensor) -> Tensor:
+        y = tensordot(self.L, x, dims=1)
+        y = tensordot(y, self.M, dims=([1,3],[0,3]))
+        y = tensordot(y, self.R, dims=([1,3],[2,1]))
+        return y.permute(0,3,2,1)
 
 class ProjTwoSite(object):
     r"""Project MPO onto two neighboring sites
@@ -78,7 +112,7 @@ class LeftBondTensors(object):
     """
     def __init__(self, N: int, *, dtype: torch.dtype = torch.complex128, device: torch.device | None = None) -> None:
         self._N = N
-        self.LBT = [torch.ones((1,1,1), dtype=dtype, device=device)] * N  # LBT[0] is trivial
+        self.LBT = [torch.ones((1,1,1), dtype=dtype, device=device) for _ in range(N)]    # LBT[0] is trivial
 
     def update(self, idx: int, bra: Tensor, ket: Tensor, op: Tensor) -> None:
         self[idx] = tensordot(bra, self[idx-1], dims=([0],[0]))
@@ -125,7 +159,7 @@ class RightBondTensors(object):
     """
     def __init__(self, N:int, *, dtype: torch.dtype = torch.complex128, device: torch.device | None = None) -> None:
         self._N = N
-        self.RBT = [torch.ones((1,1,1), dtype=dtype, device=device)] * N  # RBT[N-1] is trivial
+        self.RBT = [torch.ones((1,1,1), dtype=dtype, device=device) for _ in range(N)]  # RBT[N-1] is trivial
 
     def update(self, idx: int, bra: Tensor, ket: Tensor, op: Tensor) -> None:
         self[idx] = tensordot(bra, self[idx+1], dims=([1],[0]))
