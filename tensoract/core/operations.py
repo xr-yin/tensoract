@@ -1,10 +1,9 @@
 import torch
 from torch.linalg import qr
 
-from copy import deepcopy
 import logging
 
-from .projection import RightBondTensors, LeftBondTensors, ProjTwoSite
+from .projection import *
 
 import gc
 
@@ -221,45 +220,62 @@ def apply_mpo(O, psi, tol: float, m_max: int, max_sweeps: int = 2, overwrite: bo
     """    
     
     N = len(psi)
-    phi = deepcopy(psi) # assume psi is only changed slightly, useful
+    phi = psi.copy()    # assume psi is only changed slightly, useful
     phi.orthonormalize('right') # when O is a time evolution operator 
     Rs = RightBondTensors(N, dtype=O[0].dtype, device=O[0].device)  # for a small time step
     Ls = LeftBondTensors(N, dtype=O[0].dtype, device=O[0].device)
     Rs.load(phi, psi, O)
-    for n in range(max_sweeps):
-        for i in range(N-1): # sweep from left to right
-            j = i+1
-            x = merge(psi[i], psi[j])
-            eff_O = ProjTwoSite(Ls[i], Rs[j], O[i], O[j])
-            x = eff_O._matvec(x)
-            # split the result tensor
-            phi[i], phi[j] = split(x, 'right', tol, m_max)
-            # update the left bond tensor LBT[j]
-            Ls.update(j, phi[i].conj(), psi[i], O[i])
-        for j in range(N-1,0,-1): # sweep from right to left
-            i = j-1
-            x = merge(psi[i], psi[j])
-            # contracting left block LBT[i]
-            eff_O = ProjTwoSite(Ls[i], Rs[j], O[i], O[j])
-            x = eff_O._matvec(x)
-            # split the result tensor
-            phi[i], phi[j] = split(x, 'left', tol, m_max)
-            # update the right bond tensor RBT[i]
-            Rs.update(i, phi[j].conj(), psi[j], O[j])
-        
-        norm = torch.tensordot(phi[0].conj(), Rs[0], dims=([1],[0]))
-        norm = torch.tensordot(norm, O[0], dims=([1,3],[2,1]))
-        norm = torch.tensordot(norm, psi[0], dims=([2,4,1],[1,2,3]))
-        norm = norm.item()
-        logging.info(f'norm after {n+1} sweep(s): {norm}')
+    if psi.bond_dims[1:-1].min() >= m_max:
+        # perform one-site variational update
+        for n in range(max_sweeps):
+            for i in range(N-1): # sweep from left to right
+                eff_O = ProjOneSite(Ls[i], Rs[i], O[i])
+                phi[i] = eff_O._matvec(psi[i])
+                phi[i], phi[i+1] = qr_step(phi[i], phi[i+1])
+                # update the left bond tensor LBT[j]
+                Ls.update(i+1, phi[i].conj(), psi[i], O[i])
+            for j in range(N-1,0,-1): # sweep from right to left
+                eff_O = ProjOneSite(Ls[j], Rs[j], O[j])
+                phi[j] = eff_O._matvec(psi[j])
+                phi[j-1], phi[j] = rq_step(phi[j-1], phi[j])
+                # update the right bond tensor RBT[i]
+                Rs.update(j-1, phi[j].conj(), psi[j], O[j])
+    else:
+        # perform two-site variational update
+        for n in range(max_sweeps):
+            for i in range(N-1): # sweep from left to right
+                j = i+1
+                x = merge(psi[i], psi[j])
+                eff_O = ProjTwoSite(Ls[i], Rs[j], O[i], O[j])
+                x = eff_O._matvec(x)
+                # split the result tensor
+                phi[i], phi[j] = split(x, 'right', tol, m_max)
+                # update the left bond tensor LBT[j]
+                Ls.update(j, phi[i].conj(), psi[i], O[i])
+            for j in range(N-1,0,-1): # sweep from right to left
+                i = j-1
+                x = merge(psi[i], psi[j])
+                # contracting left block LBT[i]
+                eff_O = ProjTwoSite(Ls[i], Rs[j], O[i], O[j])
+                x = eff_O._matvec(x)
+                # split the result tensor
+                phi[i], phi[j] = split(x, 'left', tol, m_max)
+                # update the right bond tensor RBT[i]
+                Rs.update(i, phi[j].conj(), psi[j], O[j])
+            
+    norm = torch.tensordot(phi[0].conj(), Rs[0], dims=([1],[0]))
+    norm = torch.tensordot(norm, O[0], dims=([1,3],[2,1]))
+    norm = torch.tensordot(norm, psi[0], dims=([2,4,1],[1,2,3]))
+    norm = norm.item()
+    logging.info(f'norm after {n+1} sweep(s): {norm}')
 
     if overwrite:
         psi.As = phi.As
-        del Rs
-        del Ls
-        del phi
-        gc.collect()
-        torch.cuda.empty_cache()
+        #del Rs
+        #del Ls
+        #del phi
+        #gc.collect()
+        #torch.cuda.empty_cache()
         return norm
     else:
         del Rs
