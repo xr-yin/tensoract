@@ -237,6 +237,18 @@ class LindbladOneSite(object):
     def _bot(self) -> None:
         assert len(self.Lloc) == len(self.psi)
 
+def _kraus_rep(L, dt):
+    d = L.size()[0]
+    D = torch.kron(L,L.conj()) \
+    - 0.5*(torch.kron(L.conj().T@L, torch.eye(d)) + torch.kron(torch.eye(d), L.T@L.conj()))
+    eDt = matrix_exp(D*dt)
+    eDt = torch.reshape(eDt, (d,d,d,d))
+    eDt = eDt.permute(0,2,1,3)
+    eDt = torch.reshape(eDt, (d*d,d*d))
+    assert torch.allclose(eDt, eDt.adjoint())
+    B = _cholesky(eDt)
+    B = torch.reshape(B, (d,d,-1))
+    return B
 
 def _cholesky(a):
     """stablized cholesky decomposition of matrix a"""
