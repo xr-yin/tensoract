@@ -241,14 +241,13 @@ class LindbladOneSite(object):
 def _cholesky(a):
     """stablized cholesky decomposition of matrix a"""
     eigvals, eigvecs = eigh(a)
-    logging.info(f'smallest 5 eigenvalues  are {eigvals[:5]}')
-    # test the following
+    logging.debug(f'smallest 5 eigenvalues  are {eigvals[:5]}')
     mask = eigvals > min(1e-15, abs(eigvals[0]))
     eigvals = eigvals[mask]
     eigvecs = eigvecs[:,mask]
-    B = eigvecs*torch.sqrt(eigvals)
-    logging.info(f'error during cholesky decomposition: {torch.linalg.norm(a - B@B.adjoint())}')
-    return B
+    B_mat = eigvecs*torch.sqrt(eigvals)
+    logging.debug(f'error during cholesky decomposition: {torch.dist(a, B_mat@B_mat.adjoint())}')
+    return B_mat
 
 def contract_dissipative_layer(O: list, psi: LPTN, keys: list) -> None:
     """Contract the dissipative layer of Kraus operators with the LPTN
