@@ -214,8 +214,6 @@ class LindbladOneSite(object):
                 ls[j] = ls[j].to(device, dtype=dtype)
         half_e = MPO(half_e)
         half_o = MPO(half_o)
-        # TODO: do this variationally using apply_mpo
-        # combine the dissipative part 
         self.uMPO = [mul(half_e, half_o), mul(half_o, half_e)]
         """
         uMPO1, norm1 = apply_mpo(half_e, half_o, tol=1e-7, m_max=None, max_sweeps=3, overwrite=False)
