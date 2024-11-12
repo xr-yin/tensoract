@@ -168,29 +168,23 @@ class LindbladOneSite(object):
         1 : input  (dim=d)
         2 : Kraus  (dim<=d^2)
         """
-        B_list = []
-        B_keys = []
-        for i, L in enumerate(self.Lloc):
-            d = self.dims[i]
-            if L is not None:
-                B_keys.append(1)
-                # calculate the dissipative part in superoperator form
-                D = torch.kron(L,L.conj()) \
-                - 0.5*(torch.kron(L.conj().T@L, torch.eye(d)) + torch.kron(torch.eye(d), L.T@L.conj()))
-                # TODO: try the other decomposition and compare result operator sizes
-                eDt = matrix_exp(D*dt)
-                eDt = torch.reshape(eDt, (d,d,d,d))
-                eDt = eDt.permute(0,2,1,3)
-                eDt = torch.reshape(eDt, (d*d,d*d))
-                assert torch.allclose(eDt, eDt.adjoint())
-                # TODO: try cholesky from torch, quantify the error
-                B = _cholesky(eDt)
-                #B = cholesky(eDt)
-                B = torch.reshape(B, (d,d,-1))
-                B_list.append(B.to(self.device, dtype=self.dtype))
-            else:
-                B_keys.append(0)
-                B_list.append(torch.eye(d, device=self.device, dtype=self.dtype)[:,:,None])
+        if isinstance(self.Lloc, Sequence):
+            B_list = []
+            B_keys = []
+            for i, L in enumerate(self.Lloc):
+                d = self.dims[i]
+                if L is not None:
+                    B_keys.append(1)
+                    # calculate the dissipative part in superoperator form
+                    B = _kraus_rep(L, dt)
+                    B_list.append(B.to(self.device, dtype=self.dtype))
+                else:
+                    B_keys.append(0)
+                    B_list.append(torch.eye(d, device=self.device, dtype=self.dtype)[:,:,None])
+        else:
+            B = _kraus_rep(self.Lloc, dt)
+            B_list = [B.to(self.device, dtype=self.dtype)] * len(self.psi)
+            B_keys = [1] * len(self.psi)
         self.B_list = B_list
         self.B_keys = B_keys
 
