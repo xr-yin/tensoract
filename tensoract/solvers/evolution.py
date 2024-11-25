@@ -227,7 +227,9 @@ class LindbladOneSite(object):
                 'simulation_params': self.simulation_params}
 
     def _bot(self) -> None:
-        assert len(self.Lloc) == len(self.psi)
+        assert len(self.psi) == len(self.hduo) + 1
+        if isinstance(self.Lloc, Sequence):
+            assert len(self.Lloc) == len(self.psi)
 
 def _kraus_rep(L, dt):
     d = L.size()[0]
