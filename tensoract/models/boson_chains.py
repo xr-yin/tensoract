@@ -37,9 +37,13 @@ class BosonChain(object):
         """extend local one-site Lindblad operators into full space"""
         N, d = self._N, self.d
         Ls = []
-        for i, L in enumerate(self.Lloc):
-            if L is not None:
-                Ls.append(sparse.kron(sparse.eye(d**i), sparse.kron(L, torch.eye(d**(N-1-i)))))
+        if not isinstance(self.Lloc, Sequence):
+            for i in range(N):
+                Ls.append(sparse.kron(sparse.eye(d**i), sparse.kron(self.Lloc, torch.eye(d**(N-1-i)))))
+        else:
+            for i, L in enumerate(self.Lloc):
+                if L is not None:
+                    Ls.append(sparse.kron(sparse.eye(d**i), sparse.kron(L, torch.eye(d**(N-1-i)))))
         return Ls
     
     def Liouvillian(self, H, *Ls):
