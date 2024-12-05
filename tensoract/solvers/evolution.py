@@ -10,7 +10,7 @@ from typing import Any
 import logging
 import gc
 
-from ..core import MPO, LPTN, split, mul, apply_mpo
+from ..core import MPO, LPTN, split, mul, apply_mpo, qr_step
 from ..core.projection import *
 
 __all__ = ['LindbladOneSite', 'mesolve']
