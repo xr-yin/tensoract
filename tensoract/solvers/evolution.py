@@ -302,12 +302,7 @@ def truncate_krauss_sweep(As:list, tol:float, k_max:int) -> None:
         svals = svals[:pivot] / torch.linalg.norm(svals[:pivot])
         As[i] = torch.reshape(u[:,:pivot]*svals[:pivot], (di, dj, dd, -1)) # s, d, k, s'
 
-        dk = As[i].shape[-1]    # reduced Kraus dim
-        As[i], r = qr(torch.reshape(As[i].permute(0,2,3,1), (-1, dj)))  # TODO: check copy or view behavior
-        # qr decomposition might change dj
-        As[i] = As[i].reshape(di,dd,dk,-1).permute(0,3,1,2) # TODO: check copy or view behavior
-        
-        As[i+1] = torch.tensordot(r, As[i+1], dims=1)
+        As[i], As[i+1] = qr_step(As[i], As[i+1])
 
     i = -1
     di, dj, dd, dk = As[i].shape
@@ -317,6 +312,6 @@ def truncate_krauss_sweep(As:list, tol:float, k_max:int) -> None:
     As[i] = torch.reshape(u[:,:pivot]*svals[:pivot], (di, dj, dd, -1)) # s, d, k, s'
 
     dk = As[i].shape[-1]    # reduced Kraus dim
-    As[i], r = qr(torch.reshape(As[i].permute(0,2,3,1), (-1, dj)))
+    As[i], _r = qr(torch.reshape(As[i].swapaxes(1,3), (-1, dj)))
     # qr decomposition might change dj
-    As[i] = As[i].reshape(di,dd,dk,-1).permute(0,3,1,2)
+    As[i] = As[i].view(di,dk,dd,-1).swapaxes(3,1)
