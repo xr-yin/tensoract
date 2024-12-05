@@ -200,10 +200,9 @@ class Heisenberg(SpinChain):
     @property
     def Lloc(self):
         # list of jump operators
-        # TODO: maybe strip the square root here
-        return [(2*self.gamma)**0.5*self.splus] \
+        return [self.gamma**0.5*self.splus] \
                 + [None]*(self._N-2) \
-                + [(2*self.gamma)**0.5*self.sminus]
+                + [self.gamma**0.5*self.sminus]
     
     @property
     def Liouvillian(self):
