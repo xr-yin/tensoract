@@ -7,14 +7,15 @@ from torch.linalg import matrix_exp, eigh, svd, qr
 from numpy.typing import ArrayLike
 
 from typing import Any
+from collections.abc import Sequence
 import logging
 import gc
 
 from ..core import MPO, LPTN, split, mul, apply_mpo, qr_step
 from ..core.projection import *
+from .optimizer import single_shot_disentangle
 
 __all__ = ['LindbladOneSite', 'mesolve']
-
 
 def mesolve(
         model,
@@ -92,9 +93,6 @@ class LindbladOneSite(object):
         a list conataing local Lindblad jump operators
     dt : float
         time step
-    overlaps : list
-        a list containing the optimized overlaps between the updated LPTN and the exact LPTN
-        at each time step
 
     Methods
     ----------
@@ -122,28 +120,46 @@ class LindbladOneSite(object):
         self.dtype = psi[0].dtype # dtype follow from the state psi
         self.simulation_params = {}
         self.dt = None
+        self.expects = None
+        self.tf = 0
+        self.purity = []
+        self.times = []
         self._bot()
 
     def run(self, 
             Nsteps:int, 
             dt: float, 
-            tol: float, 
             m_max: int, 
             k_max: int, 
-            *,
-            max_sweeps: int=1) -> None:
+            *, 
+            e_ops: ArrayLike | list[ArrayLike] | None = None, 
+            options: dict[str, Any] | None = None) -> None:
         
-        Nbonds = len(self.psi)-1
-        assert Nbonds == len(self.hduo)
+        if options is None:
+            options = {}
+
+        tol = options.get('tol', 1e-14)
+        max_sweeps = options.get('max_sweeps', 1)
+        disent_step = options.get('disent_step', Nsteps) # meaurement/disentangle off
+        disent_sweep = options.get('disent_sweep', 0)    # disentangle off
+
         if dt != self.dt:
             self.make_coherent_layer(dt)
             self.make_dissipative_layer(dt)
             self.dt = dt
-            self.simulation_params.update({'dt':dt, 'tol':tol, 'm_max':m_max, 'k_max':k_max})
-        for i in range(Nsteps):
+
+        self.simulation_params.update({'dt':dt, 
+                                       'tol':tol, 
+                                       'm_max':m_max, 
+                                       'k_max':k_max, 
+                                       'max_sweeps': max_sweeps})
+
+        if e_ops:
+            expects = torch.empty(size=(len(e_ops), Nsteps//disent_step, len(self.psi)), dtype=self.dtype)
+
+        for i in trange(Nsteps):
             # apply uMPO[0]
             lp = apply_mpo(self.uMPO[0], self.psi, tol, m_max, max_sweeps)  # --> right canonical form
-            logging.debug(f'overlap={lp}')
             # apply bMPO
             contract_dissipative_layer(self.B_list, self.psi, self.B_keys)
             # STILL in right canonical form
@@ -152,7 +168,31 @@ class LindbladOneSite(object):
             # apply uMPO[1]
             lp = apply_mpo(self.uMPO[1], self.psi, tol, m_max, max_sweeps)  # --> right canonical form
             # now in right canonical form
-            logging.debug(f'overlap={lp}')
+
+            if (i+1) % disent_step == 0:
+                for _ in range(disent_sweep):
+                    if torch.max(self.psi.krauss_dims) > torch.max(self.dims):
+                        single_shot_disentangle(self.psi, tol, m_max=m_max, eps=1e-7, max_iter=20)
+                        # now in right canonical form
+                        truncate_krauss_sweep(self.psi, tol, k_max=k_max)
+                        # left canonical form
+                    else:
+                        logging.info(f'kraus dims: {self.psi.krauss_dims}')
+                        break
+                if e_ops:
+                    exp = self.psi.measure(e_ops)
+                    for j in range(len(e_ops)):
+                        expects[j, i//disent_step, :] = exp[j]
+                    self.purity.append(self.psi.purity().cpu())
+
+        if e_ops:
+            if self.expects is None:
+                self.expects = expects
+            else:
+                self.expects = torch.cat([self.expects, expects], dim=1)
+
+        self.times += [self.tf + (i+1)*dt for i in range(Nsteps) if (i+1)%disent_step == 0]
+        self.tf += Nsteps*dt
                 
     def make_dissipative_layer(self, dt: float) -> None:
         """
