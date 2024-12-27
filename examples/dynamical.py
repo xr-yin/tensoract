@@ -109,7 +109,7 @@ def simple_sweep(mu_range,
     if not os.path.exists(dir):
         os.makedirs(dir)
 
-    options = {'disent_step': 4,
+    options = {'disent_step': 2,
                'disent_sweep': 32}
 
     model = DDBH(N, d, t=0.2, U=1., mu=0.1, F=0.25, gamma=0.3)
@@ -124,20 +124,25 @@ def simple_sweep(mu_range,
             
             mu = round(mu.item(), 2)
             print('mu:', mu)
-            model = DDBH(N, d, t=0.2, U=1., mu=mu, F=0.25, gamma=0.3)
 
-            lab = LindbladOneSite(psi0, model)
             if i == 0:
                 final_occupations.append(nt)
                 final_states.append(psi0.copy())
                 continue
 
-            for r in range(3):
-                lab.run(Nsteps*2**r, dt/2**r, m_max, k_max, options=options)
-        
-            figname = ''.join([dir, mode, str(i)])
+            fname = ''.join([dir, mode, str(i)])
 
-            torch.save(psi0, '.'.join([figname, 'sv']))
+            try:
+                psi0 = torch.load('.'.join([fname, 'sv']))
+            except FileNotFoundError as e:
+                model = DDBH(N, d, t=0.2, U=1., mu=mu, F=0.25, gamma=0.3)
+
+                lab = LindbladOneSite(psi0, model)
+
+                for r in range(3):
+                    lab.run(Nsteps*2**r, dt/2**r, m_max, k_max, options=options)
+            
+                torch.save(psi0, '.'.join([fname, 'sv']))
 
             nt = psi0.site_expectation_value([model.num.to(device, dtype)]*N)[N//4:-(N//4)].real.mean()
 
@@ -160,14 +165,13 @@ def dynamical_gutzwiller():
         psi0 = torch.load(f'init_N={N}_gw.sv')
         simple_sweep(mu_range, psi0, m_max, k_max, Nsteps, dt, dir)
 
-def dynamical_lpdo():
+def dynamical_lpdo(N:int):
 
-    N = 36
     dt = 0.8
     m_max, k_max = 8, 8
     for Nsteps in [32,]:
-        dir = f'/scratch/ge47jac/_N={N}/Nstep={Nsteps}/'
-        mu_range = torch.arange(0.1, 0.7, 0.02)
+        dir = f'/scratch/ge47jac/area_scalingN={N}/Nstep={Nsteps}/'
+        mu_range = torch.arange(0.1, 0.4, 0.02)
         psi0 = torch.load(f'init_N={N}.sv')
         simple_sweep(mu_range, psi0, m_max, k_max, Nsteps, dt, dir)
 
