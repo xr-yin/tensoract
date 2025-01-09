@@ -89,7 +89,12 @@ def optimize(theta: torch.Tensor, U_start: torch.tensor=None, eps: float = 1e-9,
         dS = torch.reshape(dS, (kl*kr, kl*kr))
 
         # compute the unitary from a SVD of dS
-        w, _, vh = torch.linalg.svd(dS, full_matrices=False)
+        try:
+            w, _, vh = torch.linalg.svd(dS, full_matrices=False)
+        except torch._C._LinAlgError as e:
+            logging.exception(e)
+            s_new = s_old
+            break
         uh = w @ vh
 
         # update Uh
