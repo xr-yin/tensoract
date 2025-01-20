@@ -1,6 +1,8 @@
 import torch
 from scipy import sparse
 
+from collections.abc import Sequence
+
 from ..core import MPO
 
 __all__ = ['SpinChain', 'TransverseIsing', 'Heisenberg']
@@ -26,14 +28,30 @@ class SpinChain(object):
         self._N = N
 
     @property
-    def hduo():
+    def h_ops():
         return None
+
+    @property
+    def l_ops():
+        return None
+    
+    @l_ops.setter
+    def l_ops(self, l_ops):
+        if isinstance(l_ops, Sequence):
+            if len(l_ops) == self._N:
+                self._l_ops = l_ops
+            elif len(l_ops) == 1:
+                self._l_ops = l_ops[0]
+            else:
+                raise ValueError('the length of l_ops must be 1 or equal to the system size')
+        else:
+            self._l_ops = l_ops
 
     @property
     def H_full(self):
         N = self._N
         h_full = sparse.csr_matrix((2**N, 2**N))
-        for i, hh in enumerate(self.hduo):
+        for i, hh in enumerate(self.h_ops):
             h_full += sparse.kron(sparse.eye(2**i), sparse.kron(hh, torch.eye(2**(N-2-i))))
         return h_full
     
@@ -42,15 +60,21 @@ class SpinChain(object):
         """extend local one-site Lindblad operators into full space"""
         N = self._N
         Ls = []
-        for i, L in enumerate(self.Lloc):
-            if L is not None:
-                Ls.append(sparse.kron(sparse.eye(2**i), sparse.kron(L, torch.eye(2**(N-1-i)))))
+        # translational invariant, l_ops is a single operator
+        if not isinstance(self.l_ops, Sequence):
+            for i in range(N):
+                Ls.append(sparse.kron(sparse.eye(2**i), sparse.kron(self.l_ops, torch.eye(2**(N-1-i)))))
+        # not translational invariant, l_ops is a list of operators
+        else:
+            for i, L in enumerate(self.l_ops):
+                if L is not None:
+                    Ls.append(sparse.kron(sparse.eye(2**i), sparse.kron(L, torch.eye(2**(N-1-i)))))
         return Ls
     
     def energy(self, psi):
         """the energy (expectaton value of the Hamiltonian) of the system"""
         assert len(psi) == self._N
-        return torch.sum(psi.bond_expectation_value([h.reshape(2,2,2,2) for h in self.hduo]))
+        return torch.sum(psi.bond_expectation_value([h.reshape(2,2,2,2) for h in self.h_ops]))
     
     def current(self, psi):
         """particle current"""
@@ -123,7 +147,7 @@ class TransverseIsing(SpinChain):
         return MPO(Os)
     
     @property
-    def hduo(self):
+    def h_ops(self):
         sx, sz, id = self.sx, self.sz, self.cid
         J, g = self.J, self.g
         h_list = []
@@ -143,7 +167,7 @@ class TransverseIsing(SpinChain):
         return h_list
 
     @property
-    def Lloc(self):
+    def l_ops(self):
         return [None] * self._N
 
 class Heisenberg(SpinChain):
@@ -175,7 +199,7 @@ class Heisenberg(SpinChain):
         return MPO(Os)
     
     @property
-    def hduo(self):
+    def h_ops(self):
         sx, sy, sz, id = self.sx, self.sy, self.sz, self.cid
         Jx, Jy, Jz = self.J
         g = self.g
@@ -198,7 +222,7 @@ class Heisenberg(SpinChain):
         return h_list
     
     @property
-    def Lloc(self):
+    def l_ops(self):
         # list of jump operators
         return [self.gamma**0.5*self.splus] \
                 + [None]*(self._N-2) \
@@ -220,9 +244,9 @@ class dissipative_testmodel(SpinChain):
         self._N = N
 
     @property
-    def hduo(self):
+    def h_ops(self):
         return [torch.zeros((4,4))] * (self._N-1)  # null Hamiltonian --> identity unitaries
     
     @property
-    def Lloc(self):
+    def l_ops(self):
         return self._Lloc

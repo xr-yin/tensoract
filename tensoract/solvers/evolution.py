@@ -79,17 +79,17 @@ class LindbladOneSite(object):
     psi : LPTN
         the LPTN to be evolved, modification is done in place
     model : None
-        1D model object, must have the following two properties: `hduo` and `Lloc`.
+        1D model object, must have the following two properties: `h_ops` and `l_ops`.
 
     Attributes
     ----------
     psi : LPTN
         see above
-    hduo : list
+    h_ops : list
         a list containing two-local Hamiltonian terms involving only nearest neighbors
     dims : list
         a list containing local Hilbert space dimensions of each site
-    Lloc : list
+    l_ops : list
         a list conataing local Lindblad jump operators
     dt : float
         time step
@@ -113,8 +113,8 @@ class LindbladOneSite(object):
     def __init__(self, psi: LPTN, model) -> None:
         self.psi = psi
         self.dims = psi.physical_dims
-        self.hduo = model.hduo   # list of two-local terms
-        self.Lloc = model.Lloc # list containing all (local) jump operators
+        self.h_ops = model.h_ops   # list of two-local terms
+        self.l_ops = model.l_ops # list containing all (local) jump operators
         self.model_params = model.parameters()
         self.device = psi[0].device # device follow from the state psi
         self.dtype = psi[0].dtype # dtype follow from the state psi
@@ -208,10 +208,10 @@ class LindbladOneSite(object):
         1 : input  (dim=d)
         2 : Kraus  (dim<=d^2)
         """
-        if isinstance(self.Lloc, Sequence):
+        if isinstance(self.l_ops, Sequence):
             B_list = []
             B_keys = []
-            for i, L in enumerate(self.Lloc):
+            for i, L in enumerate(self.l_ops):
                 d = self.dims[i]
                 if L is not None:
                     B_keys.append(1)
@@ -222,7 +222,7 @@ class LindbladOneSite(object):
                     B_keys.append(0)
                     B_list.append(torch.eye(d, device=self.device, dtype=self.dtype)[:,:,None])
         else:
-            B = _kraus_rep(self.Lloc, dt)
+            B = _kraus_rep(self.l_ops, dt)
             B_list = [B.to(self.device, dtype=self.dtype)] * len(self.psi)
             B_keys = [1] * len(self.psi)
         self.B_list = B_list
@@ -241,7 +241,7 @@ class LindbladOneSite(object):
             for i in range(k,N-1,2):
                 j = i+1
                 di, dj = self.dims[i], self.dims[j]
-                u2site = matrix_exp(-1j*self.hduo[i]*dt/2) # imaginary unit included!
+                u2site = matrix_exp(-1j*self.h_ops[i]*dt/2) # imaginary unit included!
                 u2site = torch.reshape(u2site, (1,1,di,dj,di,dj))  # mL,mR,i,j,i*,j*
                 ls[i], ls[j] = split(u2site, mode='left', tol=eps, renormalize=False)
                 ls[i] = ls[i].to(device, dtype=dtype)
@@ -267,9 +267,9 @@ class LindbladOneSite(object):
                 'simulation_params': self.simulation_params}
 
     def _bot(self) -> None:
-        assert len(self.psi) == len(self.hduo) + 1
-        if isinstance(self.Lloc, Sequence):
-            assert len(self.Lloc) == len(self.psi)
+        assert len(self.psi) == len(self.h_ops) + 1
+        if isinstance(self.l_ops, Sequence):
+            assert len(self.l_ops) == len(self.psi)
 
 def _kraus_rep(L, dt):
     d = L.size()[0]

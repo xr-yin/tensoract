@@ -26,10 +26,28 @@ class BosonChain(object):
         self.num = torch.diag(torch.arange(d, dtype=dtype))
         self.bid = torch.eye(d, dtype=dtype)
 
+    @property
+    def l_ops():
+        """local Lindblad operators"""
+        return None
+    
+    @l_ops.setter
+    def l_ops(self, l_ops):
+        if isinstance(l_ops, Sequence):
+            if len(l_ops) == self._N:
+                self._l_ops = l_ops
+            elif len(l_ops) == 1:
+                self._l_ops = l_ops[0]
+            else:
+                raise ValueError('the length of l_ops must be 1 or equal to the system size')
+        else:
+            self._l_ops = l_ops
+
     def H_full(self):
+        """extend local two-site Hamiltonian operators into full space"""
         N, d = self._N, self.d
         h_full = sparse.csr_matrix((d**N, d**N))
-        for i, hh in enumerate(self.hduo):
+        for i, hh in enumerate(self.h_ops):
             h_full += sparse.kron(sparse.eye(d**i), sparse.kron(hh, torch.eye(d**(N-2-i))))
         return h_full
     
@@ -37,11 +55,13 @@ class BosonChain(object):
         """extend local one-site Lindblad operators into full space"""
         N, d = self._N, self.d
         Ls = []
-        if not isinstance(self.Lloc, Sequence):
+        # translational invariant, l_ops is a single operator
+        if not isinstance(self.l_ops, Sequence):
             for i in range(N):
-                Ls.append(sparse.kron(sparse.eye(d**i), sparse.kron(self.Lloc, torch.eye(d**(N-1-i)))))
+                Ls.append(sparse.kron(sparse.eye(d**i), sparse.kron(self.l_ops, torch.eye(d**(N-1-i)))))
+        # not translational invariant, l_ops is a list of operators
         else:
-            for i, L in enumerate(self.Lloc):
+            for i, L in enumerate(self.l_ops):
                 if L is not None:
                     Ls.append(sparse.kron(sparse.eye(d**i), sparse.kron(L, torch.eye(d**(N-1-i)))))
         return Ls
@@ -51,8 +71,8 @@ class BosonChain(object):
 
         Parameters
         ----------
-            H: the Hamiltonian in the full Hilbert space
-            *L: the Lindblad jump operator(s) in the full Hilbert space
+            H : the Hamiltonian in the full Hilbert space
+            *L : the Lindblad jump operator(s) in the full Hilbert space
 
         Return
         ------
@@ -120,7 +140,7 @@ class BoseHubburd(BosonChain):
         self.mu = mu
 
     @property
-    def hduo(self):
+    def h_ops(self):
         bt, bn = self.bt, self.bn
         n, id = self.num, self.bid
         t = self.t
@@ -163,7 +183,7 @@ class BoseHubburd(BosonChain):
         """the energy (expectaton value of the Hamiltonian) of the system"""
         assert len(psi) == self._N
         d = psi.physical_dims[0]
-        return torch.sum(psi.bond_expectation_value([h.reshape(d,d,d,d).to(psi.dtype) for h in self.hduo])).real
+        return torch.sum(psi.bond_expectation_value([h.reshape(d,d,d,d).to(psi.dtype) for h in self.h_ops])).real
     
     def fluctuation(self, psi: LPTN, idx: int | None=None, *, normalize=True):
         """the (normalized) fluctuations in the occupation number 
@@ -210,7 +230,7 @@ class DDBH(BoseHubburd):
         self.gamma = gamma
 
     @property
-    def hduo(self):
+    def h_ops(self):
         bt, bn = self.bt, self.bn
         n, id = self.num, self.bid
         t, U, mu, F = self.t, self.U, self.mu, self.F
@@ -265,7 +285,7 @@ class DDBH(BoseHubburd):
         return MPO(Os)
     
     @property
-    def Lloc(self):
+    def l_ops(self):
         """Local Linblad jump operators describing photon losses"""
         if not isinstance(self.gamma, Sequence):
             return self.gamma**0.5 * self.bn
@@ -300,7 +320,7 @@ class InfiniteDDBH(DDBH):
         super().__init__(N, d, t, U, mu, F, gamma, dtype)
 
     @property
-    def hduo(self):
+    def h_ops(self):
         bt, bn = self.bt, self.bn
         n, id = self.num, self.bid
         t, U, mu, F = self.t, self.U, self.mu, self.F
