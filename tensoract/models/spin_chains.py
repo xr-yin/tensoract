@@ -9,6 +9,33 @@ __all__ = ['SpinChain', 'TransverseIsing', 'Heisenberg']
 
 class SpinChain(object):
     """
+    Base class for spin one-half chains
+
+    Parameters
+    ----------
+    N : int
+        The length of the spin chain.
+
+    Attributes
+    ----------
+    h_ops : list of torch.Tensor
+        The Hamiltonian operators for each bond in the spin chain.
+    l_ops : torch.Tensor or list of torch.Tensor
+        The local Lindblad operators.
+
+    Methods
+    -------
+    H_full()
+        Returns the full Hamiltonian.
+    L_full()
+        Returns the list of full Lindblad operators.
+    energy(psi)
+        Returns the energy of the system.
+    current(psi)
+        Returns the particle current.
+    Liouvillian(H, *Ls)
+        Returns the Liouvillian superoperator.
+    """
     _dtype = torch.complex128
     cid = torch.eye(2, dtype=_dtype)
     nu = torch.zeros([2,2], dtype=_dtype)
@@ -22,11 +49,27 @@ class SpinChain(object):
         self._N = N
 
     @property
-    def h_ops():
+    def h_ops(self):
+        """
+        Hamiltonian operators for the spin chain.
+
+        Returns
+        -------
+        list of torch.Tensor
+            The Hamiltonian operators for each bond in the spin chain.
+        """
         return None
 
     @property
-    def l_ops():
+    def l_ops(self):
+        """
+        Local Lindblad operators.
+
+        Returns
+        -------
+        list or torch.Tensor
+            The local Lindblad operators.
+        """
         return None
     
     @l_ops.setter
@@ -42,6 +85,7 @@ class SpinChain(object):
             self._l_ops = l_ops
 
     def H_full(self):
+        """extend local two-site Hamiltonian operators into full space"""
         N = self._N
         h_full = sparse.csr_matrix((2**N, 2**N))
         for i, hh in enumerate(self.h_ops):
@@ -78,13 +122,18 @@ class SpinChain(object):
 
     def Liouvillian(self, H, *Ls):
         """
-        calculate the Liouvillian (super)operator
+        Calculate the Liouvillian superoperator.
 
-        Paras:
-            H: the Hamiltonian in the full Hilbert space
-            *L: the Lindblad jump operator(s) in the full Hilbert space
+        Parameters
+        ----------
+        H : sparse matrix
+            The Hamiltonian in the full Hilbert space.
+        *Ls : sparse matrix
+            The Lindblad jump operator(s) in the full Hilbert space.
 
-        Return: the Liouvillian operator as a sparse matrix
+        Returns
+        -------
+            The Liouvillian superoperator.
         """
         Lv = self._Hsup(H)
         for L in Ls:
@@ -105,18 +154,43 @@ class SpinChain(object):
         """
         D = 2**self._N
         return - 1j*(sparse.kron(H,sparse.eye(D)) - sparse.kron(sparse.eye(D),H.T))
-    
-    def parameters(self):
-        # TODO
-        return {'name': None, 'N': self._N}
 
     def __len__(self):
         return self._N
 
 class TransverseIsing(SpinChain):
     """
-    Class for transverse-field Ising model.
-    H = sum{ -J*Sz*Sz - g*Sx }
+    Class for the transverse-field Ising model.
+    
+    The Hamiltonian for the transverse-field Ising model is given by:
+    
+    .. math::
+        H = -J \sum_{i} \sigma_i^z \sigma_{i+1}^z - g \sum_{i} \sigma_i^x
+    
+    Parameters
+    ----------
+    N : int
+        The length of the spin chain.
+    g : float
+        The strength of the transverse field.
+    J : float, optional
+        The interaction strength between spins (default is 1).
+    
+    Attributes
+    ----------
+    J : float
+        The interaction strength between spins.
+    g : float
+        The strength of the transverse field.
+    _N : int
+        The length of the spin chain.
+    
+    Methods
+    -------
+    mpo()
+        Constructs the Matrix Product Operator (MPO) representation of the Hamiltonian.
+    h_ops()
+        Constructs the list of local Hamiltonian operators for the spin chain.
     """
 
     def __init__(self, N:int, g, J=1.):
@@ -159,8 +233,46 @@ class TransverseIsing(SpinChain):
         return h_list
 
 class Heisenberg(SpinChain):
-    """1D spin 1/2 Heisenberg model
-    H = -\sum{Jx*Sx*Sx + Jy*Sy*Sy + Jz*Sz*Sz + g*Sx}
+    """
+    1D spin-1/2 Heisenberg model.
+
+    The Hamiltonian for the Heisenberg model is given by:
+
+    .. math::
+        H = -\sum \left( J_x S_x S_x + J_y S_y S_y + J_z S_z S_z + g S_x \right)
+
+    Parameters
+    ----------
+    N : int
+        The length of the spin chain.
+    J : list
+        Coupling constants [Jx, Jy, Jz].
+    g : float
+        Transverse field strength.
+    gamma : float, optional
+        Dissipation rate (default is 0).
+
+    Attributes
+    ----------
+    J : list
+        Coupling constants [Jx, Jy, Jz].
+    g : float
+        Transverse field strength.
+    gamma : float
+        Dissipation rate.
+    _N : int
+        The length of the spin chain.
+    mpo : MPO
+        Matrix Product Operator representation of the Hamiltonian.
+    h_ops : list of torch.Tensor
+        List of Hamiltonian operators for each bond.
+    l_ops : list of torch.Tensor
+        List of Lindblad jump operators.
+
+    Methods
+    -------
+    Liouvillian()
+        Constructs the Liouvillian superoperator.
     """
     def __init__(self, N:int, J:list, g:float, gamma=0.):
         super().__init__(N)
