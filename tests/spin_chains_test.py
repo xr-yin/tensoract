@@ -15,11 +15,11 @@ class TestSpinChains(unittest.TestCase):
 
     def test_TransverseIsing(self):
         
-        dtype = torch.double
+        dtype = torch.complex128
         N = np.random.randint(5,10)
         g = 2 * np.random.random()
         model = TransverseIsing(N, g)
-        self.assertTrue(np.allclose(model.mpo.to_matrix(), model.H_full.toarray()))
+        self.assertTrue(np.allclose(model.mpo.to_matrix(), model.H_full().toarray()))
 
         all_up = LPTN.gen_polarized_spin_chain(N, polarization='+z', dtype=dtype)
         self.assertEqual(model.energy(all_up), -1*(N-1))
@@ -33,9 +33,8 @@ class TestSpinChains(unittest.TestCase):
         N = rng.integers(3,8)
         g = 2 * rng.uniform()
         J = 2 * rng.uniform(size=3)
-        dtype = torch.double
         model = Heisenberg(N, J, g)
-        self.assertTrue(np.allclose(model.mpo.to_matrix(), model.H_full.toarray()))
+        self.assertTrue(np.allclose(model.mpo.to_matrix(), model.H_full().toarray()))
 
 if __name__ == '__main__':
     unittest.main()

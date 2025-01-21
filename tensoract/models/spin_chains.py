@@ -216,7 +216,6 @@ class Heisenberg(SpinChain):
                 + [None]*(self._N-2) \
                 + [self.gamma**0.5*self.sminus]
     
-    @property
     def Liouvillian(self):
         return super().Liouvillian(self.H_full(), *self.L_full())
     
