@@ -41,7 +41,6 @@ class SpinChain(object):
         else:
             self._l_ops = l_ops
 
-    @property
     def H_full(self):
         N = self._N
         h_full = sparse.csr_matrix((2**N, 2**N))
@@ -49,7 +48,6 @@ class SpinChain(object):
             h_full += sparse.kron(sparse.eye(2**i), sparse.kron(hh, torch.eye(2**(N-2-i))))
         return h_full
     
-    @property
     def L_full(self):
         """extend local one-site Lindblad operators into full space"""
         N = self._N
@@ -220,7 +218,7 @@ class Heisenberg(SpinChain):
     
     @property
     def Liouvillian(self):
-        return super().Liouvillian(self.H_full, *self.L_full)
+        return super().Liouvillian(self.H_full(), *self.L_full())
     
 class dissipative_testmodel(SpinChain):
     """A spin chain model with random local dissipators"""
