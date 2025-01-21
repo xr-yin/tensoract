@@ -166,10 +166,6 @@ class TransverseIsing(SpinChain):
             h_list.append(h)
         return h_list
 
-    @property
-    def l_ops(self):
-        return [None] * self._N
-
 class Heisenberg(SpinChain):
     """1D spin 1/2 Heisenberg model
     H = -\sum{Jx*Sx*Sx + Jy*Sy*Sy + Jz*Sz*Sz + g*Sx}
