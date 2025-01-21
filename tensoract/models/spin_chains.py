@@ -9,20 +9,14 @@ __all__ = ['SpinChain', 'TransverseIsing', 'Heisenberg']
 
 class SpinChain(object):
     """
-    Base class for spin one-half chains
-
-    Params:
-        N: chain length
-    """
-    torch.set_default_dtype(torch.double)
-    
-    cid = torch.eye(2)
-    nu = torch.zeros([2,2])
-    sx = torch.tensor([[0., 1.], [1., 0.]])
-    sy = torch.tensor([[0., -1j], [1j, 0.]])
-    sz = torch.tensor([[1., 0.], [0., -1.]])
-    splus = torch.tensor([[0., 1.], [0., 0.]])
-    sminus = torch.tensor([[0., 0.], [1., 0.]])
+    _dtype = torch.complex128
+    cid = torch.eye(2, dtype=_dtype)
+    nu = torch.zeros([2,2], dtype=_dtype)
+    sx = torch.tensor([[0., 1.], [1., 0.]], dtype=_dtype)
+    sy = torch.tensor([[0., -1j], [1j, 0.]], dtype=_dtype)
+    sz = torch.tensor([[1., 0.], [0., -1.]], dtype=_dtype)
+    splus = torch.tensor([[0., 1.], [0., 0.]], dtype=_dtype)
+    sminus = torch.tensor([[0., 0.], [1., 0.]], dtype=_dtype)
     
     def __init__(self, N:int) -> None:
         self._N = N
