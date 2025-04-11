@@ -8,7 +8,38 @@ from ..core import MPO, LPTN
 __all__ = ['BosonChain', 'BoseHubburd', 'DDBH']
 
 class BosonChain(object):
-    """1D homogeneous Boson chain
+    """
+    1D homogeneous Boson chain model.
+
+    Attributes
+    ----------
+    N : int
+        The number of sites in the Boson chain.
+    d : int
+        The local dimension of each site.
+    nu : torch.Tensor
+        A tensor of zeros with shape (d, d) and specified dtype.
+    bt : torch.Tensor
+        The annihilation operator tensor.
+    bn : torch.Tensor
+        The creation operator tensor.
+    num : torch.Tensor
+        The number operator tensor.
+    bid : torch.Tensor
+        The identity operator tensor.
+
+    Methods
+    -------
+    H_full()
+        Extend local two-site Hamiltonian operators into the full space.
+    L_full()
+        Extend local one-site Lindblad operators into the full space.
+    Liouvillian(H, *Ls)
+        Calculate the Liouvillian (super)operator.
+    dtype
+        Property to get the data type of the tensors.
+    __len__()
+        Return the number of sites in the Boson chain.
     """
     def __init__(self, 
                  N: int, 
@@ -25,23 +56,6 @@ class BosonChain(object):
         self.bn = torch.diag(torch.arange(1,d, dtype=dtype)**0.5, +1)
         self.num = torch.diag(torch.arange(d, dtype=dtype))
         self.bid = torch.eye(d, dtype=dtype)
-
-    @property
-    def l_ops():
-        """local Lindblad operators"""
-        return None
-    
-    @l_ops.setter
-    def l_ops(self, l_ops):
-        if isinstance(l_ops, Sequence):
-            if len(l_ops) == self._N:
-                self._l_ops = l_ops
-            elif len(l_ops) == 1:
-                self._l_ops = l_ops[0]
-            else:
-                raise ValueError('the length of l_ops must be 1 or equal to the system size')
-        else:
-            self._l_ops = l_ops
 
     def H_full(self):
         """extend local two-site Hamiltonian operators into full space"""
@@ -292,6 +306,18 @@ class DDBH(BoseHubburd):
         else:
             return [gamma**0.5 * self.bn for gamma in self.gamma]
     
+    @l_ops.setter
+    def l_ops(self, l_ops):
+        if isinstance(l_ops, Sequence):
+            if len(l_ops) == self._N:
+                self._l_ops = l_ops
+            elif len(l_ops) == 1:
+                self._l_ops = l_ops[0]
+            else:
+                raise ValueError('the length of l_ops must be 1 or equal to the system size')
+        else:
+            self._l_ops = l_ops
+
     @property
     def Liouvillian(self):
         return super().Liouvillian(self.H_full(), *self.L_full())
