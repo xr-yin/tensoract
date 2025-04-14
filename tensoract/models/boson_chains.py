@@ -240,9 +240,14 @@ class DDBH(BoseHubburd):
         # dtype must be set to double here to ensure accuracy when prepare the 
         # unitary time evolution operator and the Kraus operators
         super().__init__(N, d, t, U, mu, dtype=dtype)
-        self.F = F
         self.gamma = gamma
         self.init_l_ops()
+        if not isinstance(F, torch.Tensor):
+            self.F = torch.tensor(F)
+        if F.nelement() == 1:
+            self.F = [F] * self._N
+        elif F.nelement() != self._N:
+            raise ValueError(f"F must be a scalar or a tensor of shape ({self._N},)")
 
     @property
     def h_ops(self):
@@ -250,8 +255,6 @@ class DDBH(BoseHubburd):
         n, id = self.num, self.bid
         t, U, mu, F = self.t, self.U, self.mu, self.F
         h_list = []
-        if not isinstance(F, Sequence):
-            F = [F] * self._N
         for i in range(self._N - 1):
             UL = UR = 0.5 * U
             muL = muR = 0.5 * mu
@@ -268,8 +271,8 @@ class DDBH(BoseHubburd):
                 + UR * torch.kron(id, n@(n-id))/2 \
                 + FL * torch.kron(bt, id) \
                 + FR * torch.kron(id, bt) \
-                + FL.conjugate() * torch.kron(bn, id) \
-                + FR.conjugate() * torch.kron(id, bn)
+                + FL.conj() * torch.kron(bn, id) \
+                + FR.conj() * torch.kron(id, bn)
             # h is a matrix with legs ``(i, j), (i*, j*)``
             # reshape to a tensor with legs ``i, j, i*, j*``
             # reshape is carried out in evolution algorithms after exponetiation
@@ -281,11 +284,9 @@ class DDBH(BoseHubburd):
         t, U, mu, F = self.t, self.U, self.mu, self.F
         bt, bn= self.bt, self.bn
         n, nu, id = self.num, self.nu, self.bid
-        if not isinstance(F, Sequence):
-            F = [F] * self._N
         Os = []
         for i in range(self._N):
-            diag = 0.5*U*n@(n-id) - mu*n + F[i]*bt + F[i].conjugate()*bn
+            diag = 0.5*U*n@(n-id) - mu*n + F[i]*bt + F[i].conj()*bn
             with torch.no_grad():
                 row1 = torch.stack([id, nu, nu, nu], dim=0)
                 row2 = torch.stack([bn, nu, nu, nu], dim=0)
@@ -299,7 +300,6 @@ class DDBH(BoseHubburd):
             Os.append(O)
         return MPO(Os)
     
-    @property
     def init_l_ops(self):
         """Local Linblad jump operators describing photon losses"""
         if not isinstance(self.gamma, Sequence):
@@ -340,8 +340,6 @@ class InfiniteDDBH(DDBH):
         n, id = self.num, self.bid
         t, U, mu, F = self.t, self.U, self.mu, self.F
         h_list = []
-        if not isinstance(F, Sequence):
-            F = [F] * self._N
         for i in range(self._N):    # N terms instead of N-1 terms
             UL = UR = 0.5 * U
             muL = muR = 0.5 * mu

@@ -28,15 +28,19 @@ class TestBosonChains(unittest.TestCase):
             N = torch.randint(3, 7, (1,))
             d = torch.randint(2, 5, (1,))
             t, U, mu, F, gamma = torch.rand(size=(5,))
-            model = DDBH(N.item(), d.item(), t, U, mu, F.item(), gamma)
-            # numpy uses double precesion
-            self.assertTrue(torch.allclose(model.mpo.to_matrix(), 
-                                           torch.from_numpy(model.H_full().toarray())))
-            F = torch.rand(size=(N,)).numpy()
             model = DDBH(N.item(), d.item(), t, U, mu, F, gamma)
             # numpy uses double precesion
             self.assertTrue(torch.allclose(model.mpo.to_matrix(), 
                                            torch.from_numpy(model.H_full().toarray())))
+            F = torch.rand(size=(N,))
+            model = DDBH(N.item(), d.item(), t, U, mu, F, gamma)
+            # numpy uses double precesion
+            self.assertTrue(torch.allclose(model.mpo.to_matrix(), 
+                                           torch.from_numpy(model.H_full().toarray())))
+            F = 0.
+            model1 = DDBH(N.item(), d.item(), t, U, mu, F, gamma)
+            model2 = BoseHubburd(N.item(), d.item(), t, U, mu)
+            self.assertTrue(torch.allclose(model1.mpo.to_matrix(), model2.mpo.to_matrix()))
 
 
 if __name__ == '__main__':
