@@ -52,6 +52,19 @@ class LPTN(MPO):
         return cls([A.clone() for i in range(N)])
     
     @classmethod
+    def gen_neel_state(cls, 
+                       N: int, 
+                       *,
+                       dtype: torch.dtype=torch.complex128, 
+                       device: torch.device=None) -> Self:
+        """Generate a Neel state with N sites"""
+        assert N % 2 == 0, "N must be even"
+        A = torch.zeros([1,1,2,1], dtype=dtype, device=device)
+        A[0,0,0,0] = 1. # up
+        As = [A.clone() for i in range(N)]
+        return cls([torch.flip(A, dims=[2]) if i % 2 == 1 else A for i,A in enumerate(As)])
+    
+    @classmethod
     def gen_random_state(cls,
                          N: int, 
                          m_max: int, 
