@@ -243,10 +243,12 @@ class DDBH(BoseHubburd):
         self.gamma = gamma
         self.init_l_ops()
         if not isinstance(F, torch.Tensor):
-            self.F = torch.tensor(F)
+            F = torch.tensor(F)
         if F.nelement() == 1:
             self.F = [F] * self._N
-        elif F.nelement() != self._N:
+        elif F.nelement() == self._N:
+            self.F = F
+        else:
             raise ValueError(f"F must be a scalar or a tensor of shape ({self._N},)")
 
     @property
