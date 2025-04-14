@@ -279,6 +279,7 @@ class Heisenberg(SpinChain):
         self.J = J
         self.g = g
         self.gamma = gamma
+        self.init_l_ops()
 
     @property
     def mpo(self):
@@ -321,15 +322,23 @@ class Heisenberg(SpinChain):
             h_list.append(h)
         return h_list
     
-    @property
-    def l_ops(self):
-        # list of jump operators
-        return [self.gamma**0.5*self.splus] \
-                + [None]*(self._N-2) \
-                + [self.gamma**0.5*self.sminus]
+    def init_l_ops(self):
+        # list of jump operators, default is sz (dephasing)
+        self.l_ops = [self.gamma**0.5*self.sz] * self._N
     
     def Liouvillian(self):
         return super().Liouvillian(self.H_full(), *self.L_full())
+
+    def parameters(self):
+        """
+        Returns the parameters of the model.
+
+        Returns
+        -------
+        list
+            The parameters of the model.
+        """
+        return {'J': self.J, 'g': self.g, 'gamma':self.gamma}
     
 class dissipative_testmodel(SpinChain):
     """A spin chain model with random local dissipators"""
