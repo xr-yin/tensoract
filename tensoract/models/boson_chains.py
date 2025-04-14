@@ -242,6 +242,7 @@ class DDBH(BoseHubburd):
         super().__init__(N, d, t, U, mu, dtype=dtype)
         self.F = F
         self.gamma = gamma
+        self.init_l_ops()
 
     @property
     def h_ops(self):
@@ -299,24 +300,12 @@ class DDBH(BoseHubburd):
         return MPO(Os)
     
     @property
-    def l_ops(self):
+    def init_l_ops(self):
         """Local Linblad jump operators describing photon losses"""
         if not isinstance(self.gamma, Sequence):
-            return self.gamma**0.5 * self.bn
+            self.l_ops = self.gamma**0.5 * self.bn
         else:
-            return [gamma**0.5 * self.bn for gamma in self.gamma]
-    
-    @l_ops.setter
-    def l_ops(self, l_ops):
-        if isinstance(l_ops, Sequence):
-            if len(l_ops) == self._N:
-                self._l_ops = l_ops
-            elif len(l_ops) == 1:
-                self._l_ops = l_ops[0]
-            else:
-                raise ValueError('the length of l_ops must be 1 or equal to the system size')
-        else:
-            self._l_ops = l_ops
+            self.l_ops = [gamma**0.5 * self.bn for gamma in self.gamma]
 
     @property
     def Liouvillian(self):
