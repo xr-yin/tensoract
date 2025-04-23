@@ -210,6 +210,17 @@ class TransverseIsing(SpinChain):
             h_list.append(h)
         return h_list
 
+    def parameters(self):
+        """
+        Returns the parameters of the model.
+
+        Returns
+        -------
+        list
+            The parameters of the model.
+        """
+        return {'J': self.J, 'g': self.g, 'gamma':self.gamma}
+
 class Heisenberg(SpinChain):
     """
     1D spin-1/2 Heisenberg model.
@@ -315,7 +326,7 @@ class Heisenberg(SpinChain):
         list
             The parameters of the model.
         """
-        return {'J': self.J, 'g': self.g, 'gamma':self.gamma}
+        return {'Jx': self.Jx, 'Jy': self.Jy, 'Jz': self.Jz, 'g': self.g, 'gamma':self.gamma}
     
 class dissipative_testmodel(SpinChain):
     """A spin chain model with random local dissipators"""
