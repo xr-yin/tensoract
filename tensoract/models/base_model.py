@@ -56,6 +56,6 @@ class NearestNeighborModel(object):
             if g==0 or op==None:
                 res.append(None)
             else:
-                res.append(g*op)
+                res.append(g**0.5*op)
         
         return res
