@@ -80,7 +80,7 @@ def rq_step(ls: torch.Tensor, rs: torch.Tensor):
 
 def split(theta: torch.Tensor, mode:str, tol:float=0., m_max:int=None, renormalize:bool=True):
     '''
-    split a local 4-tensor or 6-tensor into two parts by doing a SVD 
+    split a local  6-tensor into two parts by doing a SVD 
     and discard the impertinent singular values
     '''
     if mode not in ["left", "right", "sqrt"]:
