@@ -4,10 +4,11 @@ from scipy import sparse
 from collections.abc import Sequence
 
 from ..core import MPO
+from .base_model import NearestNeighborModel
 
 __all__ = ['SpinChain', 'TransverseIsing', 'Heisenberg']
 
-class SpinChain(object):
+class SpinChain(NearestNeighborModel):
     """
     Base class for spin one-half chains
 
@@ -15,11 +16,8 @@ class SpinChain(object):
     ----------
     N : int
         The length of the spin chain.
-
-    Attributes
-    ----------
-    h_ops : list of torch.Tensor
-        The Hamiltonian operators for each bond in the spin chain.
+    gamma : float | array
+        The dissipation rates.
     l_ops : torch.Tensor or list of torch.Tensor
         The local Lindblad operators.
 
@@ -45,44 +43,10 @@ class SpinChain(object):
     splus = torch.tensor([[0., 1.], [0., 0.]], dtype=_dtype)
     sminus = torch.tensor([[0., 0.], [1., 0.]], dtype=_dtype)
     
-    def __init__(self, N:int) -> None:
+    def __init__(self, N:int, gamma, l_ops) -> None:
         self._N = N
-
-    @property
-    def h_ops(self):
-        """
-        Hamiltonian operators for the spin chain.
-
-        Returns
-        -------
-        list of torch.Tensor
-            The Hamiltonian operators for each bond in the spin chain.
-        """
-        return None
-
-    @property
-    def l_ops(self):
-        """
-        Local Lindblad operators.
-
-        Returns
-        -------
-        list or torch.Tensor
-            The local Lindblad operators.
-        """
-        return None
-    
-    @l_ops.setter
-    def l_ops(self, l_ops):
-        if isinstance(l_ops, Sequence):
-            if len(l_ops) == self._N:
-                self._l_ops = l_ops
-            elif len(l_ops) == 1:
-                self._l_ops = l_ops[0]
-            else:
-                raise ValueError('the length of l_ops must be 1 or equal to the system size')
-        else:
-            self._l_ops = l_ops
+        self.gamma = self.init_onsites(gamma, N)
+        self.l_ops = self.init_l_ops(self.gamma, l_ops, N)
 
     def H_full(self):
         """extend local two-site Hamiltonian operators into full space"""
@@ -171,10 +135,12 @@ class TransverseIsing(SpinChain):
     ----------
     N : int
         The length of the spin chain.
-    g : float
+    g : float | array
         The strength of the transverse field.
-    J : float, optional
+    J : float | array, optional
         The interaction strength between spins (default is 1).
+    gamma : float | array, optional
+        The dissipation rates (default is 0).
     
     Attributes
     ----------
@@ -193,23 +159,34 @@ class TransverseIsing(SpinChain):
         Constructs the list of local Hamiltonian operators for the spin chain.
     """
 
-    def __init__(self, N:int, g, J=1.):
-        super().__init__(N)
-        self.J, self.g = J, g
+    def __init__(self, N:int, g, J=1., gamma=0., l_ops=None):
+        super().__init__(N, gamma, l_ops)
+        self.J = self.init_couplings(J, N)
+        self.g = self.init_onsites(g, N)
 
     @property
     def mpo(self):
         sx, sz, nu, id = self.sx, self.sz, self.nu, self.cid
         J, g = self.J, self.g
+        N = self._N
+        p = N - 1
 
-        row1 = torch.stack([id, nu, nu], dim=0)
-        row2 = torch.stack([sz, nu, nu], dim=0)
-        row3 = torch.stack([-g*sx, -J*sz, id], dim=0)
+        Os = []
 
-        O = torch.stack([row1, row2, row3], dim=0)
-        Os = [O] * self._N
-        Os[0] = O[None,-1,:,:,:]
-        Os[-1] = O[:,0,None,:,:]
+        for i in range(N):
+            # pseudo-PBC to avoid the out-of-bounds indexing for the couplings J
+            # This does not affect the final result since the last MPO tensor 
+            # consists of only the first column
+            row1 = torch.stack([id, nu, nu], dim=0)
+            row2 = torch.stack([sz, nu, nu], dim=0)
+            row3 = torch.stack([-g[i]*sx, -J[i%p]*sz, id], dim=0)
+            O = torch.stack([row1, row2, row3], dim=0)
+            if i == 0:
+                Os.append(O[None,-1,:,:,:])
+            elif i == N-1:
+                Os.append(O[:,0,None,:,:])
+            else:
+                Os.append(O)
         return MPO(Os)
     
     @property
@@ -218,12 +195,13 @@ class TransverseIsing(SpinChain):
         J, g = self.J, self.g
         h_list = []
         for i in range(self._N - 1):
-            gL = gR = 0.5 * g
+            gL = 0.5 * g[i]
+            gR = 0.5 * g[i+1]
             if i == 0: # first bond
-                gL = g
+                gL = g[i]
             if i + 1 == self._N - 1: # last bond
-                gR = g
-            h = - J * torch.kron(sz, sz) \
+                gR = g[i+1]
+            h = - J[i] * torch.kron(sz, sz) \
                 - gL * torch.kron(sx, id) \
                 - gR * torch.kron(id, sx)
             # h is a matrix with legs ``(i, j), (i*, j*)``
@@ -245,23 +223,15 @@ class Heisenberg(SpinChain):
     ----------
     N : int
         The length of the spin chain.
-    J : list
-        Coupling constants [Jx, Jy, Jz].
-    g : float
+    Jx, Jy, Jz : float | array
+        Coupling constants.
+    g : float | array
         Transverse field strength.
-    gamma : float, optional
-        Dissipation rate (default is 0).
+    gamma : float | array
+        Dissipation rate.
 
     Attributes
     ----------
-    J : list
-        Coupling constants [Jx, Jy, Jz].
-    g : float
-        Transverse field strength.
-    gamma : float
-        Dissipation rate.
-    _N : int
-        The length of the spin chain.
     mpo : MPO
         Matrix Product Operator representation of the Hamiltonian.
     h_ops : list of torch.Tensor
@@ -274,46 +244,57 @@ class Heisenberg(SpinChain):
     Liouvillian()
         Constructs the Liouvillian superoperator.
     """
-    def __init__(self, N:int, J:list, g:float, gamma=0.):
-        super().__init__(N)
-        self.J = J
-        self.g = g
-        self.gamma = gamma
-        self.init_l_ops()
+    def __init__(self, N:int, Jx, Jy, Jz, g, gamma=0., l_ops=None):
+        super().__init__(N, gamma, l_ops)
+        self.Jx = self.init_couplings(Jx, N)
+        self.Jy = self.init_couplings(Jy, N)
+        self.Jz = self.init_couplings(Jz, N)
+        self.g = self.init_onsites(g, N)
 
     @property
     def mpo(self):
         sx, sy, sz, nu, id = self.sx, self.sy, self.sz, self.nu, self.cid
-        Jx, Jy, Jz = self.J
+        Jx, Jy, Jz = self.Jx, self.Jy, self.Jz
         g = self.g
+        N = self._N
+        p = N - 1
 
-        row1 = torch.stack([id, nu, nu, nu, nu], dim=0)
-        row2 = torch.stack([sx, nu, nu, nu, nu], dim=0)
-        row3 = torch.stack([sy, nu, nu, nu, nu], dim=0)
-        row4 = torch.stack([sz, nu, nu, nu, nu], dim=0)
-        row5 = torch.stack([-g*sx, -Jx*sx, -Jy*sy, -Jz*sz, id], dim=0)
+        Os = []
 
-        O = torch.stack([row1, row2, row3, row4, row5], dim=0)
-        Os = [O] * self._N
-        Os[0] = O[None,-1,:,:,:]
-        Os[-1] = O[:,0,None,:,:]
+        for i in range(N):
+            # pseudo-PBC to avoid the out-of-bounds indexing for the couplings J
+            # This does not affect the final result since the last MPO tensor 
+            # consists of only the first column
+            row1 = torch.stack([id, nu, nu, nu, nu], dim=0)
+            row2 = torch.stack([sx, nu, nu, nu, nu], dim=0)
+            row3 = torch.stack([sy, nu, nu, nu, nu], dim=0)
+            row4 = torch.stack([sz, nu, nu, nu, nu], dim=0)
+            row5 = torch.stack([-g[i]*sx, -Jx[i%p]*sx, -Jy[i%p]*sy, -Jz[i%p]*sz, id], dim=0)
+            O = torch.stack([row1, row2, row3, row4, row5], dim=0)
+            if i == 0:
+                Os.append(O[None,-1,:,:,:])
+            elif i == N-1:
+                Os.append(O[:,0,None,:,:])
+            else:
+                Os.append(O)
         return MPO(Os)
     
     @property
     def h_ops(self):
         sx, sy, sz, id = self.sx, self.sy, self.sz, self.cid
-        Jx, Jy, Jz = self.J
+        Jx, Jy, Jz = self.Jx, self.Jy, self.Jz
         g = self.g
         h_list = []
         for i in range(self._N - 1):
-            gL = gR = 0.5 * g
+            gL = 0.5 * g[i]
+            gR = 0.5 * g[i+1]
             if i == 0: # first bond
-                gL = g
+                gL = g[i]
             if i + 1 == self._N - 1: # last bond
-                gR = g
-            h = - Jx * torch.kron(sx, sx) \
-                - Jy * torch.kron(sy, sy) \
-                - Jz * torch.kron(sz, sz) \
+                gR = g[i+1]
+            h = - Jx[i] * torch.kron(sx, sx) \
+                - Jy[i] * torch.kron(sy, sy) \
+                - Jz[i] * torch.kron(sz, sz) \
                 - gL * torch.kron(sx, id) \
                 - gR * torch.kron(id, sx)
             # h is a matrix with legs ``(i, j), (i*, j*)``
@@ -321,10 +302,6 @@ class Heisenberg(SpinChain):
             # reshape is carried out in evolution algorithms after exponetiation
             h_list.append(h)
         return h_list
-    
-    def init_l_ops(self):
-        # list of jump operators, default is sz (dephasing)
-        self.l_ops = [self.gamma**0.5*self.sz] * self._N
     
     def Liouvillian(self):
         return super().Liouvillian(self.H_full(), *self.L_full())
