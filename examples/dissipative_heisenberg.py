@@ -85,15 +85,25 @@ def sim_TN(N:int, Jx:float|list, Jy:float|list, Jz:float|list, g:float|list, gam
 
     return model
 
-def main():
-    N = 5
-    Jx = Jy = Jz = 0.1 * torch.pi
-    g = 1.0 * torch.pi
-    gamma = 0.02
-    # jump operators
-    # The total spin is conserved in the case of dephasing
-    l_ops = "spin loss"
+def main(N:int=5, Jx:float=0.1, Jy:float=0.1, Jz:float=0.1, g:float=1.0, gamma:float=0.02, l_ops:str="spin loss"):
+    """
+    Simulate the dissipative Heisenberg model using both TN and QTP methods.
+    Args:
+        N (int): Number of spins.
+            The inital state is made of first spin pointing up and the rest pointing down.
+            The magnetization per spin is therefore (N-2)/ N.
+        Jx (float): Coupling constant for x direction.
+        Jy (float): Coupling constant for y direction.
+        Jz (float): Coupling constant for z direction.
+        g (float): Energy splitting.
+        gamma (float): Dissipation rate.
+        l_ops (str): Type of collapse operator ('dephasing' or 'spin loss').
 
+    Note:
+        In case of dephasing, the total spin is conserved.
+        In case of spin loss, the system will be driven to a trivial state with all spins pointing down.
+        A non-trivial state will exist when Jx != Jy.
+    """
     f = plt.figure(figsize=(8, 8))
     TN_model = sim_TN(N, Jx, Jy, Jz, g, gamma, l_ops, f.gca())
 
@@ -108,4 +118,4 @@ def main():
     plt.savefig("data/heisenberg_loss.pdf")
 
 if __name__ == "__main__":
-    main()
+    main(Jy=0.2, g=0.1)
