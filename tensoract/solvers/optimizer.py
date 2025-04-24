@@ -6,12 +6,13 @@ space can blow up exponentially with time. The disentanglement method can mitiga
 __author__='Xianrui Yin'
 
 import torch
+from torch.linalg import svd
 
 import logging
 
 from ..core import LPTN, merge, split
 
-__all__ = ['cost', 'optimize', 'single_shot_disentangle']
+__all__ = ['cost', 'optimize', 'disentangle_sweep']
 
 def cost(u, theta):
     """cost function, sum of the quadrad of singular values
@@ -119,7 +120,7 @@ def optimize(theta: torch.Tensor, U_start: torch.tensor=None, eps: float = 1e-9,
 
     return torch.swapdims(theta.reshape(ml,di,mr,dj,kl,kr), 1, 2), Uh, s_new
 
-def single_shot_disentangle(psi:LPTN, tol:float, m_max:int, eps:float, max_iter:int):
+def disentangle_sweep(psi:LPTN, tol:float, m_max:int, k_max:int, eps:float, max_iter:int):
     """a single (back and forth) sweep of the system
     
     Parameters
@@ -130,13 +131,15 @@ def single_shot_disentangle(psi:LPTN, tol:float, m_max:int, eps:float, max_iter:
         largest discarded weights
     m_max : int
         largest matrix bond dimension
+    k_max : int
+        largest auxiliary bond dimension
     eps : float
         the difference in the second Renyi entropy in two consecutive 
         iterations. The iteration stops if the difference is smaller 
         than eps
     max_iter: int
         maximun iterations
-    
+
     """
     Nbond = len(psi)-1
     psi.orthonormalize('right')
@@ -148,6 +151,7 @@ def single_shot_disentangle(psi:LPTN, tol:float, m_max:int, eps:float, max_iter:
         #logging.debug(torch.linalg.norm(theta1 - torch.tensordot(theta, Uh.reshape(kl,kr,kl,kr).conj(), dims=[(4,5),(2,3)])))
         logging.debug(f'entropy at bond {i}-{j}: {S2}')
         psi[i], psi[j] = split(theta1, 'right', tol, m_max)
+        _local_transform_and_truncate(psi[j], tol, k_max)
     for j in range(Nbond,0,-1):
         i = j-1
         theta = merge(psi[i],psi[j])
@@ -156,3 +160,13 @@ def single_shot_disentangle(psi:LPTN, tol:float, m_max:int, eps:float, max_iter:
         #logging.debug(torch.linalg.norm(theta1 - torch.tensordot(theta, Uh.reshape(kl,kr,kl,kr).conj(), dims=[(4,5),(2,3)])))
         logging.debug(f'entropy at bond {i}-{j}: {S2}')
         psi[i], psi[j] = split(theta1, 'left', tol, m_max)
+        _local_transform_and_truncate(psi[i], tol, k_max)
+
+def _local_transform_and_truncate(A:torch.tensor, tol:float, k_max:int) -> None:
+    """Apply local transformation and truncation."""
+    di, dj, dd, dk = A.size()
+    u, svals, _ = svd(A.reshape(-1,dk), full_matrices=False)
+    # svals should have unit norm
+    pivot = min(torch.sum(svals**2 > tol), k_max)
+    svals = svals[:pivot] / torch.linalg.norm(svals[:pivot])
+    A = torch.reshape(u[:,:pivot]*svals[:pivot], (di, dj, dd, -1)) # s, d, k, s'

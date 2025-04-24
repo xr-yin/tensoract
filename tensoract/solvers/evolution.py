@@ -13,7 +13,7 @@ import gc
 
 from ..core import MPO, LPTN, split, mul, apply_mpo, qr_step
 from ..core.projection import *
-from .optimizer import single_shot_disentangle
+from .optimizer import disentangle_sweep
 
 __all__ = ['LindbladOneSite', 'mesolve']
 
@@ -172,10 +172,8 @@ class LindbladOneSite(object):
             if (i+1) % disent_step == 0:
                 for _ in range(disent_sweep):
                     if torch.max(self.psi.krauss_dims) > torch.max(self.dims):
-                        single_shot_disentangle(self.psi, tol, m_max=m_max, eps=1e-7, max_iter=20)
+                        disentangle_sweep(self.psi, tol, m_max=m_max, k_max=k_max, eps=1e-7, max_iter=20)
                         # now in right canonical form
-                        truncate_krauss_sweep(self.psi, tol, k_max=k_max)
-                        # left canonical form
                     else:
                         logging.info(f'kraus dims: {self.psi.krauss_dims}')
                         break
