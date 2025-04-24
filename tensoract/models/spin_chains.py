@@ -228,7 +228,7 @@ class Heisenberg(SpinChain):
     The Hamiltonian for the Heisenberg model is given by:
 
     .. math::
-        H = -\sum \left( J_x S_x S_x + J_y S_y S_y + J_z S_z S_z + g S_x \right)
+        H = -\sum \left( J_x S_x S_x + J_y S_y S_y + J_z S_z S_z + g S_z \right)
 
     Parameters
     ----------
@@ -237,7 +237,7 @@ class Heisenberg(SpinChain):
     Jx, Jy, Jz : float | array
         Coupling constants.
     g : float | array
-        Transverse field strength.
+        Magnetic field strength in z-direction.
     gamma : float | array
         Dissipation rate.
 
@@ -280,7 +280,7 @@ class Heisenberg(SpinChain):
             row2 = torch.stack([sx, nu, nu, nu, nu], dim=0)
             row3 = torch.stack([sy, nu, nu, nu, nu], dim=0)
             row4 = torch.stack([sz, nu, nu, nu, nu], dim=0)
-            row5 = torch.stack([-g[i]*sx, -Jx[i%p]*sx, -Jy[i%p]*sy, -Jz[i%p]*sz, id], dim=0)
+            row5 = torch.stack([-g[i]*sz, -Jx[i%p]*sx, -Jy[i%p]*sy, -Jz[i%p]*sz, id], dim=0)
             O = torch.stack([row1, row2, row3, row4, row5], dim=0)
             if i == 0:
                 Os.append(O[None,-1,:,:,:])
@@ -306,8 +306,8 @@ class Heisenberg(SpinChain):
             h = - Jx[i] * torch.kron(sx, sx) \
                 - Jy[i] * torch.kron(sy, sy) \
                 - Jz[i] * torch.kron(sz, sz) \
-                - gL * torch.kron(sx, id) \
-                - gR * torch.kron(id, sx)
+                - gL * torch.kron(sz, id) \
+                - gR * torch.kron(id, sz)
             # h is a matrix with legs ``(i, j), (i*, j*)``
             # reshape to a tensor with legs ``i, j, i*, j*``
             # reshape is carried out in evolution algorithms after exponetiation
