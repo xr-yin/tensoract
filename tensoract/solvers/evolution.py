@@ -121,8 +121,10 @@ class LindbladOneSite(object):
         self.simulation_params = {}
         self.dt = None
         self.expects = None
+        self.entropy = None
         self.tf = 0
         self.purity = []
+        self.states = []
         self.times = []
         self._bot()
 
@@ -140,8 +142,9 @@ class LindbladOneSite(object):
 
         tol = options.get('tol', 1e-14)
         max_sweeps = options.get('max_sweeps', 1)
-        disent_step = options.get('disent_step', Nsteps) # meaurement/disentangle off
-        disent_sweep = options.get('disent_sweep', 0)    # disentangle off
+        disent_step = options.get('disent_step', Nsteps)  # meaurement/disentangle off
+        disent_sweep = options.get('disent_sweep', 0)     # disentangle off
+        store_states = options.get('store_states', False) # store intermediate states
 
         if dt != self.dt:
             self.make_coherent_layer(dt)
@@ -185,6 +188,10 @@ class LindbladOneSite(object):
                     for j in range(len(e_ops)):
                         expects[j, i//disent_step, :] = exp[j]
                     self.purity.append(self.psi.purity().cpu())
+
+                if store_states:
+                    self.states.append(self.psi.copy())
+                    # store the state at every disent_step
 
         if e_ops:
             if self.expects is None:
