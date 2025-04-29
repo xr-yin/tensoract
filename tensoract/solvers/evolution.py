@@ -156,6 +156,8 @@ class LindbladOneSite(object):
 
         if e_ops:
             expects = torch.empty(size=(len(e_ops), Nsteps//disent_step, len(self.psi)), dtype=self.dtype)
+        
+        entropy = torch.empty(size=(Nsteps//disent_step, len(self.psi)-1))
 
         for i in trange(Nsteps):
             # apply uMPO[0]
@@ -170,13 +172,14 @@ class LindbladOneSite(object):
             # now in right canonical form
 
             if (i+1) % disent_step == 0:
-                for _ in range(disent_sweep):
-                    if torch.max(self.psi.krauss_dims) > torch.max(self.dims):
-                        disentangle_sweep(self.psi, tol, m_max=m_max, k_max=k_max, eps=1e-7, max_iter=20)
-                        # now in right canonical form
-                    else:
-                        logging.info(f'kraus dims: {self.psi.krauss_dims}')
-                        break
+                entropy[i//disent_step, :] = disentangle_sweep(self.psi, 
+                                                               tol, 
+                                                               m_max=m_max, 
+                                                               k_max=k_max, 
+                                                               max_sweep=disent_sweep, 
+                                                               eps=1e-7, 
+                                                               max_iter=20)
+                # now in right canonical form
                 if e_ops:
                     exp = self.psi.measure(e_ops)
                     for j in range(len(e_ops)):
@@ -188,6 +191,11 @@ class LindbladOneSite(object):
                 self.expects = expects
             else:
                 self.expects = torch.cat([self.expects, expects], dim=1)
+
+        if self.entropy is None:
+            self.entropy = entropy
+        else:
+            self.entropy = torch.cat([self.entropy, entropy], dim=0)
 
         self.times += [self.tf + (i+1)*dt for i in range(Nsteps) if (i+1)%disent_step == 0]
         self.tf += Nsteps*dt

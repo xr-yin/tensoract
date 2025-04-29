@@ -11,8 +11,9 @@ from torch.linalg import svd
 import logging
 
 from ..core import LPTN, merge, split
+from .fast_disent import fastDisentangle
 
-__all__ = ['cost', 'optimize', 'disentangle_sweep']
+__all__ = ['cost', 'optimize', 'disentangle_sweep', 'fast_disentangle_sweep']
 
 def cost(u, theta):
     """cost function, sum of the quadrad of singular values
@@ -120,13 +121,13 @@ def optimize(theta: torch.Tensor, U_start: torch.tensor=None, eps: float = 1e-9,
 
     return torch.swapdims(theta.reshape(ml,di,mr,dj,kl,kr), 1, 2), Uh, s_new
 
-def disentangle_sweep(psi:LPTN, tol:float, m_max:int, k_max:int, eps:float, max_iter:int):
+def disentangle_sweep(psi:LPTN, tol:float, m_max:int, k_max:int, max_sweep:int, eps:float, max_iter:int):
     """a single (back and forth) sweep of the system
     
     Parameters
     ----------
     psi : LPTN
-        the state to be disentangled
+        the state to be disentangled, musty be in right canonical form
     tol : float
         largest discarded weights
     m_max : int
@@ -142,23 +143,76 @@ def disentangle_sweep(psi:LPTN, tol:float, m_max:int, k_max:int, eps:float, max_
 
     """
     Nbond = len(psi)-1
+    U_list = [None] * Nbond
+    S_list = torch.zeros(size=(Nbond,))
+    for n in range(max_sweep):
+        for i in range(Nbond):
+            j = i+1
+            theta = merge(psi[i],psi[j])
+            #kl, kr = theta.shape[4:]    # debug
+            # TODO: it is worth thinking if one should use the unitary from the last iteration as
+            # the U_start for the next iteration. Note that we have also one-site unitaries.
+            theta1, U_list[i], S_list[i] = optimize(theta, U_start=None, eps=eps, max_iter=max_iter)
+            #logging.debug(torch.linalg.norm(theta1 - torch.tensordot(theta, Uh.reshape(kl,kr,kl,kr).conj(), dims=[(4,5),(2,3)])))
+            psi[i], psi[j] = split(theta1, 'right', tol, m_max)
+            psi[j] = _local_transform_and_truncate(psi[j], tol, k_max)
+        for j in range(Nbond,0,-1):
+            i = j-1
+            theta = merge(psi[i],psi[j])
+            #kl, kr = theta.shape[4:]    # debug
+            theta1, U_list[i], S_list[i] = optimize(theta, U_start=None, eps=eps, max_iter=max_iter)
+            #logging.debug(torch.linalg.norm(theta1 - torch.tensordot(theta, Uh.reshape(kl,kr,kl,kr).conj(), dims=[(4,5),(2,3)])))
+            psi[i], psi[j] = split(theta1, 'left', tol, m_max)
+            psi[i] = _local_transform_and_truncate(psi[i], tol, k_max)
+
+        if torch.all(psi.krauss_dims <= psi.physical_dims):
+            # if the auxiliary bond dimension is smaller than the physical bond dimension
+            # then we can stop the disentangling
+            logging.info(f'auxiliary bond dimension smaller than physical bond dimension, stop disentangling')
+            break
+
+    return S_list
+
+def fast_disentangle_sweep(psi:LPTN, tol:float, m_max:int, k_max:int):
+    """a single (back and forth) sweep of the system
+    
+    Parameters
+    ----------
+    psi : LPTN
+        the state to be disentangled
+    tol : float
+        largest discarded weights
+    m_max : int
+        largest matrix bond dimension
+    k_max : int
+        largest auxiliary bond dimension
+    """
+    Nbond = len(psi)-1
     psi.orthonormalize('right')
     for i in range(Nbond):
         j = i+1
         theta = merge(psi[i],psi[j])
-        #kl, kr = theta.shape[4:]    # debug
-        theta1, Uh, S2 = optimize(theta, eps=eps, max_iter=max_iter)
-        #logging.debug(torch.linalg.norm(theta1 - torch.tensordot(theta, Uh.reshape(kl,kr,kl,kr).conj(), dims=[(4,5),(2,3)])))
-        logging.debug(f'entropy at bond {i}-{j}: {S2}')
+        l, r, pl, pr, kl, kr = theta.size()   # debug
+        theta1 = theta.transpose(1,2).reshape(l*pl, r*pr, kl*kr).transpose(0,2)
+        try:
+            theta1 = torch.tensordot(torch.from_numpy(fastDisentangle(kl, kr, theta1)), theta1, dims=1)
+        except ValueError as e:
+            logging.info(f'error happens during disentangling: {e}')
+            continue
+        theta1 = theta1.permute(3,2,0,1).reshape(l,pl,r,pr,kl,kr).transpose(1,2)
         psi[i], psi[j] = split(theta1, 'right', tol, m_max)
         _local_transform_and_truncate(psi[j], tol, k_max)
     for j in range(Nbond,0,-1):
         i = j-1
         theta = merge(psi[i],psi[j])
-        #kl, kr = theta.shape[4:]    # debug
-        theta1, Uh, S2 = optimize(theta, eps=eps, max_iter=max_iter)
-        #logging.debug(torch.linalg.norm(theta1 - torch.tensordot(theta, Uh.reshape(kl,kr,kl,kr).conj(), dims=[(4,5),(2,3)])))
-        logging.debug(f'entropy at bond {i}-{j}: {S2}')
+        l, r, pl, pr, kl, kr = theta.size()   # debug
+        theta1 = theta.transpose(1,2).reshape(l*pl, r*pr, kl*kr).transpose(0,2)
+        try:
+            theta1 = torch.tensordot(torch.from_numpy(fastDisentangle(kl, kr, theta1)), theta1, dims=1)
+        except ValueError as e:
+            logging.info(f'error happens during disentangling: {e}')
+            continue
+        theta1 = theta1.permute(3,2,0,1).reshape(l,pl,r,pr,kl,kr).transpose(1,2)
         psi[i], psi[j] = split(theta1, 'left', tol, m_max)
         _local_transform_and_truncate(psi[i], tol, k_max)
 
@@ -169,4 +223,4 @@ def _local_transform_and_truncate(A:torch.tensor, tol:float, k_max:int) -> None:
     # svals should have unit norm
     pivot = min(torch.sum(svals**2 > tol), k_max)
     svals = svals[:pivot] / torch.linalg.norm(svals[:pivot])
-    A = torch.reshape(u[:,:pivot]*svals[:pivot], (di, dj, dd, -1)) # s, d, k, s'
+    return torch.reshape(u[:,:pivot]*svals[:pivot], (di, dj, dd, -1)) # s, d, k, s'
