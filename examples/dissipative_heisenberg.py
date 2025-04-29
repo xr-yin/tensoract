@@ -8,8 +8,9 @@ import sys
 tensoractpath = os.path.dirname(os.path.abspath(os.getcwd()))
 sys.path.append(os.path.join(tensoractpath, "tensoract"))
 
-def sim_QTP(N:int, Jx:float|list, Jy:float|list, Jz:float|list, g:float|list, gamma:float|list, l_ops:str, ax):
-    from qutip import (basis, expect, mesolve, qeye, sigmax, sigmay, sigmaz,tensor)
+from qutip import (Qobj, basis, expect, entropy_vn, fidelity, hilbert_dist, mesolve, qeye, sigmax, sigmay, sigmaz, tensor)
+
+def sim_QTP(N:int, Jx:list, Jy:list, Jz:list, g:list, gamma:list, l_ops:str, axes):
     # initial state
     state_list = [basis(2, 1)] + [basis(2, 0)] * (N - 1)
     psi0 = tensor(state_list)
@@ -51,14 +52,28 @@ def sim_QTP(N:int, Jx:float|list, Jy:float|list, Jz:float|list, g:float|list, ga
 
     # Expectation value
     exp_sz = expect(sz_list, result.states)
+    # purity
+    purity = np.array([(rho*rho).tr() for rho in result.states])
+    print('purity', purity[-1])
+    # rduced density matrix
+    # Be aware that the full density matrix is not a pure state!
+    reduced_dm = [rho.ptrace(list(range(N//2))) for rho in result.states]
+    # entropy
+    entropy_vN = np.array([entropy_vn(rho) for rho in reduced_dm])
+    entropy_renyi = np.array([-np.log(np.sum(np.linalg.svdvals(rho.full())**2)) for rho in reduced_dm])
 
     # Plot the expecation value
-    ax.plot(times, exp_sz[0], color='tab:green', linestyle='--', label=r"QTP $\langle \sigma_z^{0} \rangle$")
-    ax.plot(times, exp_sz[-1], color='tab:blue', linestyle='--', label=r"QTP $\langle \sigma_z^{-1} \rangle$")
+    axes[0].plot(times, exp_sz[0], color='tab:green', linestyle='--', label=r"QTP $\langle \sigma_z^{0} \rangle$")
+    axes[0].plot(times, exp_sz[-1], color='tab:blue', linestyle='--', label=r"QTP $\langle \sigma_z^{-1} \rangle$")
+    # Plot the purity
+    axes[1].plot(times, purity, color='tab:orange', linestyle='--', label=r"QTP $\mathcal{P}$")
+    # Plot the entropy
+    axes[2].plot(times, entropy_vN, color='tab:purple', linestyle='--', label=r"QTP $S_{vN}$")
+    axes[2].plot(times, entropy_renyi, color='tab:red', linestyle='--', label=r"QTP $S_2$")
 
-    return H
+    return H, result.states[1:], times[1:]
 
-def sim_TN(N:int, Jx:float|list, Jy:float|list, Jz:float|list, g:float|list, gamma:float|list, l_ops:str, ax):
+def sim_TN(N:int, Jx:float|list, Jy:float|list, Jz:float|list, g:float|list, gamma:float|list, l_ops:str, axes):
     from tensoract import LPTN, SpinChain, Heisenberg, LindbladOneSite
     # initial state
     psi0 = LPTN.gen_polarized_spin_chain(N, polarization='+z')
@@ -73,19 +88,23 @@ def sim_TN(N:int, Jx:float|list, Jy:float|list, Jz:float|list, g:float|list, gam
     
     model = Heisenberg(N, Jx, Jy, Jz, g, gamma, l_ops)
 
-    options = {'disent_step': 1, 'disent_sweep':5}
+    options = {'disent_step': 1, 'disent_sweep':8, 'store_states': True}
 
     lab = LindbladOneSite(psi0, model)
     lab.run(200, 0.5, 10, 4, e_ops=[model.sz,], options=options)
     print(psi0.bond_dims, psi0.krauss_dims)
 
     times = lab.times
-    ax.plot(times, lab.expects[0,:,0], color='tab:green', label=r"TN $\langle \sigma_z^{0} \rangle$")
-    ax.plot(times, lab.expects[0,:,-1], color='tab:blue', label=r"TN $\langle \sigma_z^{-1} \rangle$")
+    axes[0].plot(times, lab.expects[0,:,0].real, color='tab:green', label=r"TN $\langle \sigma_z^{0} \rangle$")
+    axes[0].plot(times, lab.expects[0,:,-1].real, color='tab:blue', label=r"TN $\langle \sigma_z^{-1} \rangle$")
+    # Plot the purity
+    axes[1].plot(times, lab.purity, color='tab:orange', label=r"TN $\mathcal{P}$")
+    # Plot the entropy
+    axes[2].plot(times, lab.entropy[:, N//2], color='tab:red', label=r"TN $S_2$")
 
-    return model
+    return model, lab.states
 
-def main(N:int=5, Jx:float=0.1, Jy:float=0.1, Jz:float=0.1, g:float=1.0, gamma:float=0.02, l_ops:str="spin loss"):
+def main(N:int, Jx:float, Jy:float, Jz:float, g:float, gamma:float=0.02, l_ops:str="spin loss"):
     """
     Simulate the dissipative Heisenberg model using both TN and QTP methods.
     Args:
@@ -104,18 +123,42 @@ def main(N:int=5, Jx:float=0.1, Jy:float=0.1, Jz:float=0.1, g:float=1.0, gamma:f
         In case of spin loss, the system will be driven to a trivial state with all spins pointing down.
         A non-trivial state will exist when Jx != Jy.
     """
-    f = plt.figure(figsize=(8, 8))
-    TN_model = sim_TN(N, Jx, Jy, Jz, g, gamma, l_ops, f.gca())
+    f, axes = plt.subplots(1, 3, sharex=True, figsize=(16, 5))
+    TN_model, TN_states = sim_TN(N, Jx, Jy, Jz, g, gamma, l_ops, axes)
+    QTP_model, QTP_states, times = sim_QTP(N, TN_model.Jx, TN_model.Jy, TN_model.Jz, TN_model.g, TN_model.gamma, l_ops, axes)
 
-    QTP_model = sim_QTP(N, TN_model.Jx, TN_model.Jy, TN_model.Jz, TN_model.g, TN_model.gamma, l_ops, ax=f.gca())
+    #assert np.allclose(TN_model.H_full().toarray(), QTP_model.full()), "TN and QTP models do not match"
 
-    assert np.allclose(TN_model.H_full().toarray(), QTP_model.full()), "TN and QTP models do not match"
+    # infidelity
+    infidelity = np.array([1 - fidelity(Qobj(a.to_density_matrix(), dims=b.dims), b) for a, b in zip(TN_states, QTP_states)])
+    hs_dist = np.array([hilbert_dist(Qobj(a.to_density_matrix(), dims=b.dims), b) for a, b in zip(TN_states, QTP_states)])
 
-    plt.legend()
-    plt.xlabel("Time")
-    plt.ylabel(r"$\langle \sigma_z \rangle$")
-    plt.title(fr"{l_ops} with $\gamma$={gamma}")
-    plt.savefig("data/heisenberg_loss.pdf")
+    print('infidelity', np.max(infidelity), infidelity[-1])
+    print('hs_dist', np.max(hs_dist), hs_dist[-1])
+
+    # inset ax
+    inset_ax = axes[1].inset_axes([0.5, 0.5, 0.4, 0.4])  # [x, y, width, height]
+    inset_ax.semilogy(times, infidelity, color='tab:orange', linestyle='--', label=r"$IF$")
+    inset_ax.semilogy(times, hs_dist, color='tab:blue', linestyle='--', label=r"$HS$")
+    inset_ax.legend()
+
+    axes[0].set_ylabel(r"$\langle \sigma_z \rangle$")
+    axes[1].set_ylabel(r"$\mathcal{P}$")
+    axes[2].set_ylabel(r"$S$")
+
+    for ax in axes.flat:
+        ax.set_xlabel("Time")
+        ax.legend(loc="lower right")
+
+    f.suptitle(fr"{l_ops} with $\gamma$={gamma}")
+    f.tight_layout()
+
+    plt.savefig("data/heisenberg_dephasing.pdf")
 
 if __name__ == "__main__":
-    main(Jy=0.2, g=0.1)
+    # small damping, large errors at intermediate times
+    Jx = 0.1 * torch.pi
+    Jy = 0.1 * torch.pi
+    Jz = 0.1 * torch.pi
+    g = 1.0 * torch.pi
+    main(N=6, Jx=Jx, Jy=Jy, Jz=Jz, g=g, l_ops="dephasing")
