@@ -4,10 +4,11 @@ from scipy import sparse
 from collections.abc import Sequence
 
 from ..core import MPO, LPTN
+from .base_model import NearestNeighborModel
 
 __all__ = ['BosonChain', 'BoseHubburd', 'DDBH']
 
-class BosonChain(object):
+class BosonChain(NearestNeighborModel):
     """
     1D homogeneous Boson chain model.
 
@@ -41,21 +42,25 @@ class BosonChain(object):
     __len__()
         Return the number of sites in the Boson chain.
     """
+
+    _dtype = torch.double
+
     def __init__(self, 
                  N: int, 
                  d: int, 
-                 *,
-                 dtype: torch.dtype=torch.double) -> None:
+                 gamma: float | Sequence[float]=0.,
+                 l_ops: torch.Tensor | Sequence[torch.Tensor]=None) -> None:
         """we include the local operators as instance attributes instead of 
         class attributes due to the indeterminacy of local dimensions"""
         self._N = N
-        self._dtype = dtype
         self.d = d
-        self.nu = torch.zeros((d,d), dtype=dtype)
-        self.bt = torch.diag(torch.arange(1,d, dtype=dtype)**0.5, -1)
-        self.bn = torch.diag(torch.arange(1,d, dtype=dtype)**0.5, +1)
-        self.num = torch.diag(torch.arange(d, dtype=dtype))
-        self.bid = torch.eye(d, dtype=dtype)
+        self.nu = torch.zeros((d,d), dtype=self._dtype)
+        self.bt = torch.diag(torch.arange(1,d, dtype=self._dtype)**0.5, -1)
+        self.bn = torch.diag(torch.arange(1,d, dtype=self._dtype)**0.5, +1)
+        self.num = torch.diag(torch.arange(d, dtype=self._dtype))
+        self.bid = torch.eye(d, dtype=self._dtype)
+        self.gamma = self.init_onsites(gamma, N)
+        self.l_ops = self.init_l_ops(self.gamma, l_ops, N)
 
     def H_full(self):
         """extend local two-site Hamiltonian operators into full space"""
@@ -146,27 +151,28 @@ class BoseHubburd(BosonChain):
                  t: float, 
                  U: float, 
                  mu: float, 
-                 *, 
-                 dtype: torch.dtype=torch.double) -> None:
-        super().__init__(N, d, dtype=dtype)
-        self.t = t
-        self.U = U
-        self.mu = mu
+                 gamma: float | Sequence[float] = 0.0,
+                 l_ops: torch.Tensor | Sequence[torch.Tensor] = None) -> None:
+        super().__init__(N, d, gamma, l_ops)
+        self.t = self.init_couplings(t, N)
+        self.U = self.init_onsites(U, N)
+        self.mu = self.init_onsites(mu, N)
 
     @property
     def h_ops(self):
         bt, bn = self.bt, self.bn
         n, id = self.num, self.bid
-        t = self.t
         h_list = []
         for i in range(self._N - 1):
-            UL = UR = 0.5 * self.U
-            muL = muR = 0.5 * self.mu
+            UL = 0.5 * self.U[i]
+            UR = 0.5 * self.U[i+1]
+            muL = 0.5 * self.mu[i]
+            muR = 0.5 * self.mu[i+1]
             if i == 0: # first bond
-                UL, muL = self.U, self.mu
+                UL, muL = self.U[i], self.mu[i]
             if i + 1 == self._N - 1: # last bond
-                UR, muR = self.U, self.mu
-            h = - t * (torch.kron(bt, bn) + torch.kron(bn, bt)) \
+                UR, muR = self.U[i+1], self.mu[i+1]
+            h = - self.t[i] * (torch.kron(bt, bn) + torch.kron(bn, bt)) \
                 - muL * torch.kron(n, id) \
                 - muR * torch.kron(id, n) \
                 + UL * torch.kron(n@(n-id), id)/2 \
@@ -182,15 +188,27 @@ class BoseHubburd(BosonChain):
         t, U, mu = self.t, self.U, self.mu
         bt, bn= self.bt, self.bn
         n, nu, id = self.num, self.nu, self.bid
-        with torch.no_grad():
+        
+        N = self._N
+        p = N - 1
+        
+        Os = []
+
+        for i in range(N):
+            # pseudo-PBC to avoid the out-of-bounds indexing for the couplings J
+            # This does not affect the final result since the last MPO tensor 
+            # consists of only the first column
             row1 = torch.stack([id, nu, nu, nu], dim=0)
             row2 = torch.stack([bn, nu, nu, nu], dim=0)
             row3 = torch.stack([bt, nu, nu, nu], dim=0)
-            row4 = torch.stack([0.5*U*n@(n-id) - mu*n, -t*bt, -t*bn, id], dim=0)
-        O = torch.stack([row1, row2, row3, row4], dim=0)
-        Os = [O] * self._N
-        Os[0] = O[None,-1,:,:,:]
-        Os[-1] = O[:,0,None,:,:]
+            row4 = torch.stack([0.5*U[i]*n@(n-id) - mu[i]*n, -t[i%p]*bt, -t[i%p]*bn, id], dim=0)
+            O = torch.stack([row1, row2, row3, row4], dim=0)
+            if i == 0:
+                Os.append(O[None,-1,:,:,:])
+            elif i == N-1:
+                Os.append(O[:,0,None,:,:])
+            else:
+                Os.append(O)
         return MPO(Os)
     
     def energy(self, psi: LPTN):
@@ -235,79 +253,41 @@ class DDBH(BoseHubburd):
                  U: float, 
                  mu: float, 
                  F: float | Sequence[float], 
-                 gamma: float | Sequence[float], 
-                 dtype: torch.dtype=torch.double) -> None:
+                 gamma: float | Sequence[float],
+                 l_ops: torch.Tensor | Sequence[torch.Tensor] = None) -> None:
         # dtype must be set to double here to ensure accuracy when prepare the 
         # unitary time evolution operator and the Kraus operators
-        super().__init__(N, d, t, U, mu, dtype=dtype)
-        self.gamma = gamma
-        self.init_l_ops()
-        if not isinstance(F, torch.Tensor):
-            F = torch.tensor(F)
-        if F.nelement() == 1:
-            self.F = [F] * self._N
-        elif F.nelement() == self._N:
-            self.F = F
-        else:
-            raise ValueError(f"F must be a scalar or a tensor of shape ({self._N},)")
+        super().__init__(N, d, t, U, mu, gamma, l_ops)
+        self.F = self.init_onsites(F, N)
 
     @property
     def h_ops(self):
-        bt, bn = self.bt, self.bn
-        n, id = self.num, self.bid
-        t, U, mu, F = self.t, self.U, self.mu, self.F
-        h_list = []
+        bt, bn, id = self.bt, self.bn, self.bid
+        F = self.F
+        h_list = super().h_ops
+        # add the driving term
         for i in range(self._N - 1):
-            UL = UR = 0.5 * U
-            muL = muR = 0.5 * mu
             FL = 0.5 * F[i]
             FR = 0.5 * F[i+1]
             if i == 0: # first bond
-                UL, muL, FL = U, mu, F[i]
+                FL = F[i]
             if i + 1 == self._N - 1: # last bond
-                UR, muR, FR = U, mu, F[i+1]
-            h = - t * (torch.kron(bt, bn) + torch.kron(bn, bt)) \
-                - muL * torch.kron(n, id) \
-                - muR * torch.kron(id, n) \
-                + UL * torch.kron(n@(n-id), id)/2 \
-                + UR * torch.kron(id, n@(n-id))/2 \
-                + FL * torch.kron(bt, id) \
-                + FR * torch.kron(id, bt) \
-                + FL.conj() * torch.kron(bn, id) \
-                + FR.conj() * torch.kron(id, bn)
-            # h is a matrix with legs ``(i, j), (i*, j*)``
-            # reshape to a tensor with legs ``i, j, i*, j*``
-            # reshape is carried out in evolution algorithms after exponetiation
-            h_list.append(h)
+                FR = F[i+1]
+            h_list[i] += FL * torch.kron(bt, id) \
+                       + FR * torch.kron(id, bt) \
+                       + FL.conj() * torch.kron(bn, id) \
+                       + FR.conj() * torch.kron(id, bn)
         return h_list
     
     @property
     def mpo(self):
-        t, U, mu, F = self.t, self.U, self.mu, self.F
+        F = self.F
         bt, bn= self.bt, self.bn
-        n, nu, id = self.num, self.nu, self.bid
-        Os = []
+        h_mpo = super().mpo
+        # add the driving term
         for i in range(self._N):
-            diag = 0.5*U*n@(n-id) - mu*n + F[i]*bt + F[i].conj()*bn
-            with torch.no_grad():
-                row1 = torch.stack([id, nu, nu, nu], dim=0)
-                row2 = torch.stack([bn, nu, nu, nu], dim=0)
-                row3 = torch.stack([bt, nu, nu, nu], dim=0)
-                row4 = torch.stack([diag, -t*bt, -t*bn, id], dim=0)
-            O = torch.stack([row1, row2, row3, row4], dim=0)
-            if i == 0:
-                O= O[None,-1,:,:,:]
-            if i == self._N-1:
-                O = O[:,0,None,:,:]
-            Os.append(O)
-        return MPO(Os)
-    
-    def init_l_ops(self):
-        """Local Linblad jump operators describing photon losses"""
-        if not isinstance(self.gamma, Sequence):
-            self.l_ops = self.gamma**0.5 * self.bn
-        else:
-            self.l_ops = [gamma**0.5 * self.bn for gamma in self.gamma]
+            h_mpo[i][-1,0] += (F[i]*bt + F[i].conj()*bn)
+        return h_mpo
 
     @property
     def Liouvillian(self):
