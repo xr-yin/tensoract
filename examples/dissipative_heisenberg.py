@@ -88,10 +88,10 @@ def sim_TN(N:int, Jx:float|list, Jy:float|list, Jz:float|list, g:float|list, gam
     
     model = Heisenberg(N, Jx, Jy, Jz, g, gamma, l_ops)
 
-    options = {'disent_step': 1, 'disent_sweep':8, 'store_states': True}
+    options = {'tol':1e-9, 'disent_step': 1, 'disent_sweep':4, 'store_states': True}
 
     lab = LindbladOneSite(psi0, model)
-    lab.run(200, 0.5, 10, 4, e_ops=[model.sz,], options=options)
+    lab.run(200, 0.5, 8, 8, e_ops=[model.sz,], options=options)
     print(psi0.bond_dims, psi0.krauss_dims)
 
     times = lab.times
@@ -100,7 +100,7 @@ def sim_TN(N:int, Jx:float|list, Jy:float|list, Jz:float|list, g:float|list, gam
     # Plot the purity
     axes[1].plot(times, lab.purity, color='tab:orange', label=r"TN $\mathcal{P}$")
     # Plot the entropy
-    axes[2].plot(times, lab.entropy[:, N//2], color='tab:red', label=r"TN $S_2$")
+    axes[2].plot(times, lab.entropy[:, N//2-1], color='tab:red', label=r"TN $S_2$")
 
     return model, lab.states
 
@@ -153,7 +153,7 @@ def main(N:int, Jx:float, Jy:float, Jz:float, g:float, gamma:float=0.02, l_ops:s
     f.suptitle(fr"{l_ops} with $\gamma$={gamma}")
     f.tight_layout()
 
-    plt.savefig("data/heisenberg_dephasing.pdf")
+    plt.savefig("data/heisenberg_dephasing_4.pdf")
 
 if __name__ == "__main__":
     # small damping, large errors at intermediate times

@@ -110,7 +110,7 @@ def sim_TN(N:int, d:int, J:float|list, U:float|list, mu:float|list, F:float|list
     # Plot the purity
     axes[1].plot(times, lab.purity, color='tab:orange', label=r"TN $\mathcal{P}$")
     # Plot the entropy
-    axes[2].plot(times, lab.entropy[:, N//2], color='tab:red', label=r"TN $S_2$")
+    axes[2].plot(times, lab.entropy[:, N//2-1], color='tab:red', label=r"TN $S_2$")
 
     return model, lab.states
 
@@ -145,8 +145,8 @@ def main(N:int, d:int, J:float, U:float, mu:float, F:float, gamma:float, l_ops:s
     f.suptitle(fr"{l_ops} with $\gamma$={gamma}")
     f.tight_layout()
 
-    plt.savefig("data/BH_loss_5.pdf")
+    plt.savefig("data/BH_loss.pdf")
 
 if __name__ == "__main__":
     # small damping, large errors at intermediate times
-    main(N=3, d=5, J=0.2, U=1., mu=0.5, F=0.25, gamma=0.3)
+    main(N=4, d=5, J=0.2, U=1., mu=0.5, F=0.25, gamma=0.3)
