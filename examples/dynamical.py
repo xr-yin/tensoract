@@ -16,7 +16,7 @@ sys.path.append(os.path.join(tensoractpath, "tensoract"))
 from tensoract import LPTN, DDBH, LindbladOneSite
 
 def prep_initial_state(N : int, 
-                       d : int=4, 
+                       d : int=5, 
                        mu : float=0.1, 
                        m_max : int=8, 
                        k_max : int=8,
@@ -54,10 +54,10 @@ def prep_initial_state(N : int,
     model = DDBH(N, d, t=0.2, U=1., mu=mu, F=0.25, gamma=0.3)
     lab = LindbladOneSite(psi0, model)
     
-    Nsteps = 50
+    Nsteps = 25
     dt = 0.8
-    options = {'disent_step': 1,
-               'disent_sweep': 32}
+    options = {'disent_step': 2,
+               'disent_sweep': 36}
     
     name = f'init_N={N}'
 
@@ -165,16 +165,16 @@ def dynamical_gutzwiller():
         psi0 = torch.load(f'init_N={N}_gw.sv')
         simple_sweep(mu_range, psi0, m_max, k_max, Nsteps, dt, dir)
 
-def dynamical_lpdo(N:int):
+def dynamical_lpdo(N:int, list_Nsteps:list):
 
     dt = 0.8
     m_max, k_max = 8, 8
-    for Nsteps in [32,]:
+    for Nsteps in list_Nsteps:
         dir = f'/scratch/ge47jac/area_scalingN={N}/Nstep={Nsteps}/'
-        mu_range = torch.arange(0.1, 0.4, 0.02)
+        mu_range = torch.arange(0.1, 0.5, 0.02)
         psi0 = torch.load(f'init_N={N}.sv')
         simple_sweep(mu_range, psi0, m_max, k_max, Nsteps, dt, dir)
 
 if __name__ == '__main__':
     
-    dynamical_gutzwiller()
+    dynamical_lpdo(N=36)

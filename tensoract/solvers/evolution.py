@@ -158,7 +158,7 @@ class LindbladOneSite(object):
                                        'max_sweeps': max_sweeps})
 
         if e_ops:
-            expects = torch.empty(size=(len(e_ops), Nsteps//disent_step, len(self.psi)), dtype=self.dtype)
+            expects = torch.empty(size=(Nsteps//disent_step, len(self.psi)), dtype=self.dtype)
         
         entropy = torch.empty(size=(Nsteps//disent_step, len(self.psi)-1))
 
@@ -169,6 +169,7 @@ class LindbladOneSite(object):
             contract_dissipative_layer(self.B_list, self.psi, self.B_keys)
             # STILL in right canonical form
             # CPTP maps preserve canonical forms!
+            # The following step is crucial
             truncate_krauss_sweep(self.psi, tol, k_max) # --> left canonical form
             # apply uMPO[1]
             lp = apply_mpo(self.uMPO[1], self.psi, tol, m_max, max_sweeps)  # --> right canonical form
@@ -184,9 +185,7 @@ class LindbladOneSite(object):
                                                                max_iter=20)
                 # now in right canonical form
                 if e_ops:
-                    exp = self.psi.measure(e_ops)
-                    for j in range(len(e_ops)):
-                        expects[j, i//disent_step, :] = exp[j]
+                    expects[i//disent_step, :] = self.psi.site_expectation_value(e_ops)
                     self.purity.append(self.psi.purity().cpu())
 
                 if store_states:
@@ -197,7 +196,7 @@ class LindbladOneSite(object):
             if self.expects is None:
                 self.expects = expects
             else:
-                self.expects = torch.cat([self.expects, expects], dim=1)
+                self.expects = torch.cat([self.expects, expects], dim=0)
 
         if self.entropy is None:
             self.entropy = entropy
