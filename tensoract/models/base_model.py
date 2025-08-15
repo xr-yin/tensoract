@@ -53,7 +53,7 @@ class NearestNeighborModel(object):
         
         res = []
         for g, op in zip(gamma, l_ops):
-            if g==0 or op==None:
+            if g==0 or op is None:
                 res.append(None)
             else:
                 res.append(g**0.5*op)
