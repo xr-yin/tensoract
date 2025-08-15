@@ -1,4 +1,3 @@
-numpy>=1.22
-scipy>=1.8
-torch>=2.4
-packaging
+scipy==1.16.1
+torch==2.8.0
+tqdm==4.67.1
