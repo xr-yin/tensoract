@@ -3,17 +3,12 @@ ful locally purified density operator (LPDO)."""
 
 import torch
 import matplotlib.pyplot as plt
-
 import os
-import sys
 import pickle
 import logging
-logging.basicConfig(level=logging.WARNING)
-
-tensoractpath = os.path.dirname(os.path.abspath(os.getcwd()))
-sys.path.append(os.path.join(tensoractpath, "tensoract"))
-
 from tensoract import LPTN, DDBH, LindbladOneSite
+
+logging.basicConfig(level=logging.WARNING)
 
 def prep_initial_state(N : int, 
                        d : int=5, 
@@ -134,7 +129,7 @@ def simple_sweep(mu_range,
 
             try:
                 psi0 = torch.load('.'.join([fname, 'sv']))
-            except FileNotFoundError as e:
+            except FileNotFoundError:
                 model = DDBH(N, d, t=0.2, U=1., mu=mu, F=0.25, gamma=0.3)
 
                 lab = LindbladOneSite(psi0, model)

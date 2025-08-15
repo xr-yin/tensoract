@@ -1,14 +1,8 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
-
-import os
-import sys
 import pickle
 
-tensoractpath = os.path.dirname(os.path.abspath(os.getcwd()))
-sys.path.append(os.path.join(tensoractpath, "tensoract"))
-    
 from tensoract import LPTN, LindbladOneSite
 from qutip import (basis, Qobj, expect, entropy_mutual, fidelity, hilbert_dist, mesolve, qeye, create, destroy, sigmax, sigmay, sigmaz,tensor)
 

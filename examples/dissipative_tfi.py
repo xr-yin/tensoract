@@ -102,7 +102,7 @@ def main():
     plt.xlabel("Time")
     plt.ylabel(r"$\langle \sigma_z \rangle$")
     plt.title(fr"{l_op} with $\gamma$={gamma}")
-    plt.savefig(f"data/tfi_dephasing.pdf")
+    plt.savefig("data/tfi_dephasing.pdf")
 
 if __name__ == "__main__":
     main()

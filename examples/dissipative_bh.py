@@ -1,13 +1,6 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
-
-import os
-import sys
-
-tensoractpath = os.path.dirname(os.path.abspath(os.getcwd()))
-sys.path.append(os.path.join(tensoractpath, "tensoract"))
-
 from qutip import (Qobj, basis, expect, entropy_vn, fidelity, hilbert_dist, mesolve, qeye, create, destroy, tensor)
 from tensoract import LPTN, BosonChain, DDBH, LindbladOneSite
 

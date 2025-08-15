@@ -1,13 +1,6 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
-
-import os
-import sys
-
-tensoractpath = os.path.dirname(os.path.abspath(os.getcwd()))
-sys.path.append(os.path.join(tensoractpath, "tensoract"))
-
 from qutip import (Qobj, basis, expect, entropy_vn, fidelity, hilbert_dist, mesolve, qeye, sigmax, sigmay, sigmaz, tensor)
 
 def sim_QTP(N:int, Jx:list, Jy:list, Jz:list, g:list, gamma:list, l_ops:str, axes):
