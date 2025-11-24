@@ -2,12 +2,6 @@ import torch
 
 import unittest
 import logging
-import sys
-import os
-from copy import deepcopy
-
-tensoractpath = os.path.dirname(os.path.abspath(os.getcwd()))
-sys.path.append(os.path.join(tensoractpath, "tensoract"))
 
 from tensoract.core.lptn import *
 from tensoract.core.lptn import _load_right_bond_tensors
