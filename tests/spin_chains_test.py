@@ -2,11 +2,6 @@ import numpy as np
 import torch
 
 import unittest
-import sys
-import os
-
-tensoractpath = os.path.dirname(os.path.abspath(os.getcwd()))
-sys.path.append(os.path.join(tensoractpath, "tensoract"))
 
 from tensoract.models.spin_chains import *
 from tensoract.core.lptn import *
