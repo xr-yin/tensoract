@@ -57,6 +57,7 @@ class TestMeasurements(unittest.TestCase):
 
         self.phy_dims = torch.randint(2, 5, size=(N,))
         psi = LPTN.gen_random_state(N, 9, 9, self.phy_dims, dtype=dtype, device=device)
+        psi.orthonormalize('right')
         psi_copy = psi.copy()
 
         # local case
@@ -68,6 +69,7 @@ class TestMeasurements(unittest.TestCase):
         self.assertAlmostEqual(complex_expect.imag.item(), 0.)
         self.assertTrue(torch.allclose(psi.site_expectation_value(sz, idx=idx, drop_imag=True), 
                                       complex_expect.real))
+        # check the state is unchanged
         self.assertTrue(torch.allclose(psi.to_matrix(), psi_copy.to_matrix()))
         
         # global case
@@ -80,6 +82,7 @@ class TestMeasurements(unittest.TestCase):
                                        torch.zeros(size=(N,), device=device, dtype=torch.double)))
         self.assertTrue(torch.allclose(psi.site_expectation_value(op_list, drop_imag=True), 
                                        complex_expect.real))    # check the real parts agree
+        # check the state is unchanged
         self.assertTrue(torch.allclose(psi.to_matrix(), psi_copy.to_matrix()))
 
     def test_bond(self):
@@ -94,6 +97,7 @@ class TestMeasurements(unittest.TestCase):
         d = torch.randint(2,5,size=(1,))
         dtype = self.dtype
         psi = LPTN.gen_random_state(N, 9, 9, d.tile((N,)), dtype=dtype)
+        psi.orthonormalize('right')
         psi_copy = psi.copy()
 
         num = torch.randint(1,4,size=(1,)) # number of operators
@@ -117,6 +121,7 @@ class TestMeasurements(unittest.TestCase):
         exp = psi.measure(op_list, drop_imag=drop_imag)
         for op, v in zip(op_list, exp):
             self.assertTrue(torch.allclose(psi.site_expectation_value([op]*N, drop_imag=drop_imag), v))        
+        # check the state is unchanged
         self.assertTrue(torch.allclose(psi.to_matrix(), psi_copy.to_matrix()))
     
     def setUp(self) -> None:
@@ -127,7 +132,7 @@ class TestCompress():
 
     def test_load_right_bond_tensors(self):
         psi = self.psi
-        phi = deepcopy(psi)
+        phi = psi.copy()
         phi.orthonormalize('right')
         RBT = _load_right_bond_tensors(psi, phi)
         self.assertEqual(len(RBT), len(psi))
