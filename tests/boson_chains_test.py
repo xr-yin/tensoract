@@ -16,8 +16,8 @@ class TestBosonChains(unittest.TestCase):
         with torch.no_grad():
             N = torch.randint(3, 7, (1,))
             d = torch.randint(2, 5, (1,))
-            t, U, mu = torch.rand(size=(3,))
-            model = BoseHubburd(N.item(), d.item(), t.item(), U.item(), mu.item())
+            t, U, mu, F = torch.rand(size=(4,))
+            model = BoseHubburd(N.item(), d.item(), t.item(), U.item(), mu.item(), F=F.item())
             # numpy uses double precesion
             self.assertTrue(torch.allclose(model.mpo.to_matrix(), 
                                         torch.from_numpy(model.H_full().toarray())))
@@ -26,12 +26,15 @@ class TestBosonChains(unittest.TestCase):
             t = torch.rand(size=(N-1,))
             U = torch.rand(size=(N,))
             mu = torch.rand(size=(N,))
-            model = BoseHubburd(N.item(), d.item(), t, U, mu)
+            mu = torch.rand(size=(N,))
+            F = torch.rand(size=(N,))
+            model = BoseHubburd(N.item(), d.item(), t, U, mu, F=F)
             # numpy uses double precesion
             self.assertTrue(torch.allclose(model.mpo.to_matrix(), 
                                         torch.from_numpy(model.H_full().toarray())))
 
     def test_DDBH(self):
+        from tensoract.models.boson_chains import DDBH
 
         with torch.no_grad():            
             N = torch.randint(3, 7, (1,))
@@ -43,9 +46,9 @@ class TestBosonChains(unittest.TestCase):
                                            torch.from_numpy(model.H_full().toarray())))
 
             # compare with BoseHubburd
-            F = 0.
+            F = 1.
             model1 = DDBH(N.item(), d.item(), t.item(), U.item(), mu.item(), F, gamma.item())
-            model2 = BoseHubburd(N.item(), d.item(), t.item(), U.item(), mu.item())
+            model2 = BoseHubburd(N.item(), d.item(), t.item(), U.item(), mu.item(), F=F)
             self.assertTrue(torch.allclose(model1.mpo.to_matrix(), model2.mpo.to_matrix()))
 
             # inhomogeneous case
