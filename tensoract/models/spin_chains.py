@@ -346,3 +346,6 @@ class dissipative_testmodel(SpinChain):
     @property
     def l_ops(self):
         return self._Lloc
+
+    def parameters(self):
+        return 
