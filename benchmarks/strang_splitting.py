@@ -14,19 +14,13 @@ import torch
 import matplotlib.pyplot as plt
 from scipy.sparse.linalg import expm_multiply
 
-import os
-import sys
 import time
 import logging
-from copy import deepcopy
 logging.basicConfig(level=logging.WARNING)
 
-tensoractpath = os.path.dirname(os.path.abspath(os.getcwd()))
-sys.path.append(os.path.join(tensoractpath, "tensoract"))
-
 from tensoract.core.lptn import LPTN
-from tensoract.models.spin_chains import Heisenberg, TransverseIsing, dissipative_testmodel
-from tensoract.models.boson_chains import DDBH
+from tensoract.models.spin_chains import SpinChain, Heisenberg, TransverseIsing, dissipative_testmodel
+from tensoract.models.boson_chains import BoseHubburd, annihilate
 from tensoract.solvers.evolution import LindbladOneSite
 
 def XXZ(N: int, tmax: float, dt_list: list, dtype: torch.dtype, device: torch.device):
@@ -58,9 +52,9 @@ def XXZ(N: int, tmax: float, dt_list: list, dtype: torch.dtype, device: torch.de
 
     err_t = torch.zeros(len(dt_list))
     time_t = torch.zeros(len(dt_list))
-    model = Heisenberg(N, (1., 1., 0.5), 0., 1.)
+    model = Heisenberg(N, 1., 1., 0.5, 0., .1, l_ops=SpinChain.sz)
 
-    Xt_ref = expm_multiply(tmax * model.Liouvillian, X.to_density_matrix().ravel().numpy())
+    Xt_ref = expm_multiply(tmax * model.Liouvillian(), X.to_density_matrix().ravel().numpy())
 
     # convergence plots
     fig, (ax1,ax2) = plt.subplots(1,2, figsize=(9,5))
@@ -71,7 +65,7 @@ def XXZ(N: int, tmax: float, dt_list: list, dtype: torch.dtype, device: torch.de
 
             torch.cuda.empty_cache()
 
-            psi = deepcopy(X)
+            psi = X.copy()
             lab = LindbladOneSite(psi, model)
             Nsteps = round(tmax / dt)
             print(f"Nsteps={Nsteps}")
@@ -83,6 +77,7 @@ def XXZ(N: int, tmax: float, dt_list: list, dtype: torch.dtype, device: torch.de
             print('trace:', torch.trace(psi.to_density_matrix()))
 
         print('errors:', err_t)
+        print(f'bd={psi.bond_dims}, kd={psi.krauss_dims}')
         ax1.loglog(dt_list, err_t, 'o-', label=f'bd={bd},kd={kd}')
         ax2.plot(dt_list, time_t, 'x-', label=f'bd={bd},kd={kd}')
 
@@ -119,14 +114,14 @@ def BoseHubbardRun(N: int, d: int, tmax: float, dt_list: list, dtype: torch.dtyp
     # initialize a vaccum state
     A = torch.zeros([1,1,d,1], dtype=torch.complex128, device='cpu')
     A[0,0,0,0] = 1.
-    X = LPTN([A.clone() for _ in N])
+    X = LPTN([A.clone() for _ in range(N)])
     print('trace at t=0:', torch.trace(X.to_density_matrix()))
 
     err_t = torch.zeros(len(dt_list))
     time_t = torch.zeros(len(dt_list))
-    model = DDBH(N, d, t=.2, U=1., mu=0.3, F=.25, gamma=0.3)
+    model = BoseHubburd(N, d, t=.2, U=1., mu=0.3, F=.25, gamma=0.3, l_ops=annihilate(d))
 
-    Xt_ref = expm_multiply(tmax * model.Liouvillian, X.to_density_matrix().ravel().numpy())
+    Xt_ref = expm_multiply(tmax * model.Liouvillian(), X.to_density_matrix().ravel().numpy())
     Xt_ref = torch.from_numpy(Xt_ref)   # always keep on the CPU
 
     X.to(device, dtype=dtype)
@@ -134,10 +129,10 @@ def BoseHubbardRun(N: int, d: int, tmax: float, dt_list: list, dtype: torch.dtyp
     fig, (ax1,ax2) = plt.subplots(1,2, figsize=(9,5))
     fig.suptitle('Strang splitting of Liouville operator')
 
-    for bd,kd in [(10,4), (10,3)]:
+    for bd,kd in [(9,4), (9,3)]:
         for n, dt in enumerate(dt_list):
             torch.cuda.empty_cache()
-            psi = deepcopy(X)
+            psi = X.copy()
             lab = LindbladOneSite(psi, model)
             Nsteps = round(tmax / dt)
             print(f"Nsteps={Nsteps}")
@@ -148,7 +143,7 @@ def BoseHubbardRun(N: int, d: int, tmax: float, dt_list: list, dtype: torch.dtyp
             err_t[n] = torch.linalg.norm(psi.to_density_matrix().ravel().cpu() - Xt_ref)
             logging.info(f'trace={torch.trace(psi.to_density_matrix())}')
 
-        print(f'bd={psi.bond_dims}, kd_max={psi.krauss_dims}')
+        print(f'bd={psi.bond_dims}, kd={psi.krauss_dims}')
         print('errors:', err_t)
         ax1.loglog(dt_list, err_t, 'o-', label=f'bd={bd},kd={kd}')
         ax2.plot(dt_list, time_t, 'x-', label=f'bd={bd},kd={kd}')
@@ -180,7 +175,7 @@ def tfi_coherent():
 
     rho = LPTN.gen_polarized_spin_chain(N, '+z')
     # reference time-evolved state
-    U = torch.linalg.matrix_exp(torch.from_numpy(-1j * tmax * model.H_full.toarray()))
+    U = torch.linalg.matrix_exp(torch.from_numpy(-1j * tmax * model.H_full().toarray()))
 
     rhot_ref = U @ rho.to_density_matrix() @ U.adjoint()
 
@@ -206,7 +201,7 @@ def tfi_coherent():
     plt.ylabel('errors')
     plt.legend()
 
-    plt.savefig('tfi_coherent')
+    plt.savefig('tfi_coherent.pdf')
     
 def dissipative_dynamics():
     """errors from the dissipative layer alone
@@ -231,11 +226,11 @@ def dissipative_dynamics():
     print('bond dimensions at start:', x.bond_dims)
     print('Kraus dimensions at start:', x.krauss_dims)
     # reference time-evolved state
-    xt_ref = expm_multiply(tmax * model.Liouvillian(model.H_full, *model.L_full), x.to_density_matrix().ravel())
+    xt_ref = expm_multiply(tmax * model.Liouvillian(model.H_full(), *model.L_full()), x.to_density_matrix().ravel())
 
     for n, dt in enumerate(dt_list):
 
-        psi = deepcopy(x)
+        psi = x.copy()
         lab = LindbladOneSite(psi, model)
 
         Nsteps = round(tmax / dt)
@@ -255,7 +250,7 @@ def dissipative_dynamics():
     plt.ylabel('errors')
     plt.legend()
     plt.tight_layout()
-    plt.savefig('random_dissipative')
+    plt.savefig('random_dissipative.pdf')
 
 if __name__ == '__main__': 
 
