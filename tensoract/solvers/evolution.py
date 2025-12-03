@@ -351,6 +351,7 @@ def truncate_krauss_sweep(As:list, tol:float, k_max:int) -> None:
         u, svals, _ = svd(As[i].reshape(-1,dk), full_matrices=False)
         # svals should have unit norm
         pivot = min(torch.sum(svals**2 > tol), k_max)
+        pivot = max(pivot, 1)  # at least keep one Kraus dimension
         svals = svals[:pivot] / torch.linalg.norm(svals[:pivot])
         As[i] = torch.reshape(u[:,:pivot]*svals[:pivot], (di, dj, dd, -1)) # s, d, k, s'
 
