@@ -3,15 +3,10 @@ from torch.linalg import matrix_exp
 from scipy.sparse.linalg import expm_multiply
 
 import unittest
-import sys
-import os
 import logging
 logging.basicConfig(level=logging.INFO)
 
-tensoractpath = os.path.dirname(os.path.abspath(os.getcwd()))
-sys.path.append(os.path.join(tensoractpath, "tensoract"))
-
-from tensoract import MPO, LPTN, mul, Heisenberg, DDBH
+from tensoract import MPO, LPTN, mul, Heisenberg, BoseHubburd
 from tensoract.models.spin_chains import dissipative_testmodel
 from tensoract.solvers.evolution import LindbladOneSite, contract_dissipative_layer
 
@@ -30,7 +25,7 @@ class TestDetach(unittest.TestCase):
             logging.info('unitary MPO for Heisenberg model')
 
             _ = LPTN.gen_polarized_spin_chain(N, polarization='+z', dtype=dtype, device=device)
-            model = Heisenberg(N, [1., 1., 1.5], g=1.)
+            model = Heisenberg(N, 1., 1., 1.5, g=1.)
             lab = LindbladOneSite(_, model)
             lab.make_coherent_layer(dt)
 
@@ -38,7 +33,7 @@ class TestDetach(unittest.TestCase):
             v = mul(lab.uMPO[0], lab.uMPO[1])
             
             logging.info(f"dt={dt}: [H_o, H_e]: {torch.dist(u.to_matrix(), v.to_matrix())}")
-            logging.info(f"dt={dt}: H_trotter-H_exact: {torch.dist(u.to_matrix().cpu(), matrix_exp(torch.from_numpy(-1j*dt*model.H_full.toarray())))}")
+            logging.info(f"dt={dt}: H_trotter-H_exact: {torch.dist(u.to_matrix().cpu(), matrix_exp(torch.from_numpy(-1j*dt*model.H_full().toarray())))}")
             # check unitarity
             self.assertTrue(torch.allclose(u.to_matrix() @ u.to_matrix().adjoint(), torch.eye(2**N, dtype=dtype, device=device)))
         
@@ -49,7 +44,7 @@ class TestDetach(unittest.TestCase):
             N, d = 4, 4
 
             _ = LPTN.gen_random_state(N, 5, 5, phy_dims=[d]*N, dtype=dtype, device=device)
-            model = DDBH(N, d, t=0.2, U=1., mu=0.8, F=0.3, gamma=0.1)
+            model = BoseHubburd(N, d, t=0.2, U=1., mu=0.8, F=0.3, gamma=0.1)
             lab = LindbladOneSite(_, model)
             lab.make_coherent_layer(dt, eps=0.)
             print(lab.uMPO[1].bond_dims)
@@ -79,6 +74,7 @@ class TestDetach(unittest.TestCase):
                 self.assertTrue(torch.allclose(l[:,:,0], id2))
             else:
                 trace_preserving = torch.tensordot(l, l.conj(), dims=([0,2], [0,2]))
+                print('trace_preserving:', trace_preserving)
                 self.assertTrue(torch.allclose(trace_preserving, id2))
         
     def test_contract_dissipative_layer(self):
@@ -126,7 +122,7 @@ class TestDetach(unittest.TestCase):
     def setUp(self) -> None:
         
         self.device = 'cpu'
-        self.dtype = torch.cdouble
+        self.dtype = torch.complex128
 
 if __name__ == "__main__":
     unittest.main()

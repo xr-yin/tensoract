@@ -220,13 +220,16 @@ def apply_mpo(O, psi, tol: float, m_max: int, max_sweeps: int = 2, overwrite: bo
     """    
     
     N = len(psi)
-    phi = psi.copy()    # assume psi is only changed slightly, useful
-    phi.orthonormalize('right') # when O is a time evolution operator 
-    Rs = RightBondTensors(N, dtype=O[0].dtype, device=O[0].device)  # for a small time step
+    phi = psi.copy()    
+    # assume psi is only changed slightly, useful when O is a time 
+    # evolution operator for a small time step 
+    phi.orthonormalize('right') 
+    Rs = RightBondTensors(N, dtype=O[0].dtype, device=O[0].device)  
     Ls = LeftBondTensors(N, dtype=O[0].dtype, device=O[0].device)
     Rs.load(phi, psi, O)
     if psi.bond_dims[1:-1].min() >= m_max:
         # perform one-site variational update
+        logging.info('perform one-site variational update')
         for n in range(max_sweeps):
             for i in range(N-1): # sweep from left to right
                 eff_O = ProjOneSite(Ls[i], Rs[i], O[i])
@@ -234,14 +237,17 @@ def apply_mpo(O, psi, tol: float, m_max: int, max_sweeps: int = 2, overwrite: bo
                 phi[i], phi[i+1] = qr_step(phi[i], phi[i+1])
                 # update the left bond tensor LBT[j]
                 Ls.update(i+1, phi[i].conj(), psi[i], O[i])
+            phi[-1] /= torch.linalg.norm(phi[-1])
             for j in range(N-1,0,-1): # sweep from right to left
                 eff_O = ProjOneSite(Ls[j], Rs[j], O[j])
                 phi[j] = eff_O._matvec(psi[j])
                 phi[j-1], phi[j] = rq_step(phi[j-1], phi[j])
                 # update the right bond tensor RBT[i]
                 Rs.update(j-1, phi[j].conj(), psi[j], O[j])
+            phi[0] /= torch.linalg.norm(phi[0])
     else:
         # perform two-site variational update
+        logging.info('perform two-site variational update')
         for n in range(max_sweeps):
             for i in range(N-1): # sweep from left to right
                 j = i+1
@@ -271,11 +277,11 @@ def apply_mpo(O, psi, tol: float, m_max: int, max_sweeps: int = 2, overwrite: bo
 
     if overwrite:
         psi.As = phi.As
-        #del Rs
-        #del Ls
-        #del phi
-        #gc.collect()
-        #torch.cuda.empty_cache()
+        del Rs
+        del Ls
+        del phi
+        gc.collect()
+        torch.cuda.empty_cache()
         return norm
     else:
         del Rs

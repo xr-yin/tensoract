@@ -94,12 +94,12 @@ def sim_TN(N:int, d:int, J:float|list, U:float|list, mu:float|list, F:float|list
     options = {'tol': 1e-9, 'disent_step': 1, 'disent_sweep':8, 'store_states': True}
 
     lab = LindbladOneSite(psi0, model)
-    lab.run(200, 0.5, 8, 8, e_ops=[model.num+0j,], options=options)
+    lab.run(200, 0.5, 8, 8, e_ops=[model.num+0j,]*N, options=options)
     print(psi0.bond_dims, psi0.krauss_dims)
 
     times = lab.times
-    axes[0].plot(times, lab.expects[0,:,0].real, color='tab:green', label=r"TN $\langle n_{0} \rangle$")
-    axes[0].plot(times, lab.expects[0,:,-1].real, color='tab:blue', label=r"TN $\langle n_{-1} \rangle$")
+    axes[0].plot(times, lab.expects[:,0].real, color='tab:green', label=r"TN $\langle n_{0} \rangle$")
+    axes[0].plot(times, lab.expects[:,-1].real, color='tab:blue', label=r"TN $\langle n_{-1} \rangle$")
     # Plot the purity
     axes[1].plot(times, lab.purity, color='tab:orange', label=r"TN $\mathcal{P}$")
     # Plot the entropy
@@ -138,7 +138,7 @@ def main(N:int, d:int, J:float, U:float, mu:float, F:float, gamma:float, l_ops:s
     f.suptitle(fr"{l_ops} with $\gamma$={gamma}")
     f.tight_layout()
 
-    plt.savefig("data/BH_loss.pdf")
+    plt.savefig("BH_loss.pdf")
 
 if __name__ == "__main__":
     # small damping, large errors at intermediate times

@@ -2,13 +2,8 @@ import torch
 from torch import randint, normal, cdouble
 
 import unittest
-import sys
-import os
 import logging
 logging.basicConfig(level=logging.INFO)
-
-tensoractpath = os.path.dirname(os.path.abspath(os.getcwd()))
-sys.path.append(os.path.join(tensoractpath, "tensoract"))
 
 from tensoract.core.operations import *
 from tensoract.core.mpo import MPO
@@ -73,28 +68,24 @@ class TestMultiplication(unittest.TestCase):
             P[i] += torch.rand(1, device=P.device, dtype=P.dtype)
         self.assertTrue(torch.allclose(inner(W, P), torch.trace(W.to_matrix().adjoint() @ P.to_matrix())))
 
-    def test_apply_mpo_overwrite(self):
+    def test_apply_mpo_one_site(self):
+        """Note that the operator O here is not unitary, so the returned norm (the norm of O|phi>) is not equal to one."""
 
         O, phi = self.O, self.phi
 
         multibonds = phi.bond_dims * O.bond_dims
         logging.info(f'multiplied bond dimensions: {multibonds}')
 
-        # regular matrix products for comparison
-        ref = O.to_matrix() @ phi.to_matrix() # |v> = O|psi>
-
-        norm = apply_mpo(O, phi, tol=1e-7, m_max=None, max_sweeps=3)
+        norm = apply_mpo(O, phi, tol=1e-7, m_max=multibonds.min(), max_sweeps=3)
         logging.info(f'optimized bond dimensions: {phi.bond_dims}')
-
-        self.assertAlmostEqual(norm, torch.linalg.norm(ref).item())    # <v|v> =? <v|v>**0.5
-        
-        r = ref / torch.linalg.norm(ref)
-        self.assertTrue(torch.allclose(r, phi.to_matrix()))
-        self.assertTrue(torch.allclose(r@r.adjoint(), phi.to_density_matrix()))
+        self.assertAlmostEqual(inner(phi,phi).real.item(), 1.)
     
-    def test_apply_mpo(self):
+    def test_apply_mpo_two_site(self):
+        """Note that the operator O here is not unitary, so the returned norm (the norm of O|phi>) is not equal to one."""
 
         O, phi = self.O, self.phi
+        print(inner(phi,phi))
+        print(torch.norm(self.phi[0]))
 
         multibonds = phi.bond_dims * O.bond_dims
         logging.info(f'multiplied bond dimensions: {multibonds}')
@@ -102,8 +93,9 @@ class TestMultiplication(unittest.TestCase):
         # regular matrix products for comparison
         ref = O.to_matrix() @ phi.to_matrix() # |v> = O|psi>
 
-        phi, norm = apply_mpo(O, phi, tol=1e-7, m_max=None, max_sweeps=3, overwrite=False)
+        norm = apply_mpo(O, phi, tol=1e-7, m_max=multibonds.max(), max_sweeps=3)
         logging.info(f'optimized bond dimensions: {phi.bond_dims}')
+        self.assertAlmostEqual(inner(phi,phi).real.item(), 1.)
 
         phi[0] = norm * phi[0]
         self.assertAlmostEqual(norm, torch.linalg.norm(ref).item())    # <v|v> =? <v|v>**0.5

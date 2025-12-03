@@ -136,6 +136,14 @@ class LindbladOneSite(object):
             *, 
             e_ops: ArrayLike | list[ArrayLike] | None = None, 
             options: dict[str, Any] | None = None) -> None:
+        """
+        Parameters
+        ----------
+        e_ops : ArrayLike | list[ArrayLike]
+            On a single site level, expectation values can only be computed for one operator 
+            at a time. If expectation values of more operators are desired, one can save the 
+            intermediate states and do a post-calculation.
+        """
         
         if options is None:
             options = {}
@@ -157,7 +165,11 @@ class LindbladOneSite(object):
                                        'k_max':k_max, 
                                        'max_sweeps': max_sweeps})
 
-        if e_ops:
+        if e_ops is not None:
+            if isinstance(e_ops, torch.Tensor):
+                assert e_ops.ndim == 2
+                logging.info('e_ops is computed for every site')
+                e_ops = [e_ops]*len(self.psi)
             expects = torch.empty(size=(Nsteps//disent_step, len(self.psi)), dtype=self.dtype)
         
         entropy = torch.empty(size=(Nsteps//disent_step, len(self.psi)-1))
@@ -192,7 +204,7 @@ class LindbladOneSite(object):
                     self.states.append(self.psi.copy())
                     # store the state at every disent_step
 
-        if e_ops:
+        if e_ops is not None:
             if self.expects is None:
                 self.expects = expects
             else:

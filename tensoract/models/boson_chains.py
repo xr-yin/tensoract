@@ -2,11 +2,19 @@ import torch
 from scipy import sparse
 
 from collections.abc import Sequence
+import warnings
 
 from ..core import MPO, LPTN
 from .base_model import NearestNeighborModel
 
-__all__ = ['BosonChain', 'BoseHubburd', 'DDBH']
+__all__ = ['BosonChain', 'BoseHubburd']
+
+torch.set_default_dtype(torch.float64)
+
+bid = lambda d: torch.eye(d) + 0j
+occup = lambda d: torch.diag(torch.arange(d)) + 0j
+create = lambda d: torch.diag(torch.arange(1,d)**0.5, -1) + 0j
+annihilate = lambda d: torch.diag(torch.arange(1,d)**0.5, +1) +0j
 
 class BosonChain(NearestNeighborModel):
     """
@@ -43,8 +51,6 @@ class BosonChain(NearestNeighborModel):
         Return the number of sites in the Boson chain.
     """
 
-    _dtype = torch.double
-
     def __init__(self, 
                  N: int, 
                  d: int, 
@@ -54,11 +60,11 @@ class BosonChain(NearestNeighborModel):
         class attributes due to the indeterminacy of local dimensions"""
         self._N = N
         self.d = d
-        self.nu = torch.zeros((d,d), dtype=self._dtype)
-        self.bt = torch.diag(torch.arange(1,d, dtype=self._dtype)**0.5, -1)
-        self.bn = torch.diag(torch.arange(1,d, dtype=self._dtype)**0.5, +1)
-        self.num = torch.diag(torch.arange(d, dtype=self._dtype))
-        self.bid = torch.eye(d, dtype=self._dtype)
+        self.nu = torch.zeros((d,d))
+        self.bt = create(d)
+        self.bn = annihilate(d)
+        self.num = occup(d)
+        self.bid = bid(d)
         self.gamma = self.init_onsites(gamma, N)
         self.l_ops = self.init_l_ops(self.gamma, l_ops, N)
 
@@ -114,19 +120,16 @@ class BosonChain(NearestNeighborModel):
         """
         D = self.d**self._N
         return - 1j*(sparse.kron(H,sparse.eye(D)) - sparse.kron(sparse.eye(D), H.T))
-
-    @property
-    def dtype(self):
-        return self._dtype
     
     def __len__(self):
         return self._N
     
 class BoseHubburd(BosonChain):
-    r"""1D Bose-Hubburd model with Hamiltonian
+    r"""1D (driven-dissipative) Bose-Hubburd model with Hamiltonian
     .. math ::
         H = - t \sum_{\langle i, j \rangle} (b_i^{\dagger} b_j + b_j^{\dagger} b_i)
-            + \frac{U}{2} \sum_i n_i (n_i - 1) - \mu \sum_i n_i
+            + \sum_{j} \left[ -\mu b_j^\dagger b_j + \frac{U}{2} b_j^\dagger b_j^\dagger b_j b_j 
+            + F (b_j^\dagger + b_j \right]
 
     Parameters
     ----------
@@ -151,12 +154,15 @@ class BoseHubburd(BosonChain):
                  t: float, 
                  U: float, 
                  mu: float, 
+                 *,
+                 F: float | Sequence[float] = 0.0, 
                  gamma: float | Sequence[float] = 0.0,
                  l_ops: torch.Tensor | Sequence[torch.Tensor] = None) -> None:
         super().__init__(N, d, gamma, l_ops)
         self.t = self.init_couplings(t, N)
         self.U = self.init_onsites(U, N)
         self.mu = self.init_onsites(mu, N)
+        self.F = self.init_onsites(F,N)
 
     @property
     def h_ops(self):
@@ -168,15 +174,21 @@ class BoseHubburd(BosonChain):
             UR = 0.5 * self.U[i+1]
             muL = 0.5 * self.mu[i]
             muR = 0.5 * self.mu[i+1]
+            FL = 0.5 * self.F[i]
+            FR = 0.5 * self.F[i+1]
             if i == 0: # first bond
-                UL, muL = self.U[i], self.mu[i]
+                UL, muL, FL = self.U[i], self.mu[i], self.F[i]
             if i + 1 == self._N - 1: # last bond
-                UR, muR = self.U[i+1], self.mu[i+1]
+                UR, muR, FR = self.U[i+1], self.mu[i+1], self.F[i+1]
             h = - self.t[i] * (torch.kron(bt, bn) + torch.kron(bn, bt)) \
                 - muL * torch.kron(n, id) \
                 - muR * torch.kron(id, n) \
                 + UL * torch.kron(n@(n-id), id)/2 \
-                + UR * torch.kron(id, n@(n-id))/2
+                + UR * torch.kron(id, n@(n-id))/2 \
+                + FL * torch.kron(bt, id) \
+                + FR * torch.kron(id, bt) \
+                + FL.conj() * torch.kron(bn, id) \
+                + FR.conj() * torch.kron(id, bn)
             # h is a matrix with legs ``(i, j), (i*, j*)``
             # reshape to a tensor with legs ``i, j, i*, j*``
             # reshape is carried out in evolution algorithms after exponetiation
@@ -185,7 +197,7 @@ class BoseHubburd(BosonChain):
 
     @property
     def mpo(self):
-        t, U, mu = self.t, self.U, self.mu
+        t, U, mu, F = self.t, self.U, self.mu, self.F
         bt, bn= self.bt, self.bn
         n, nu, id = self.num, self.nu, self.bid
         
@@ -201,7 +213,8 @@ class BoseHubburd(BosonChain):
             row1 = torch.stack([id, nu, nu, nu], dim=0)
             row2 = torch.stack([bn, nu, nu, nu], dim=0)
             row3 = torch.stack([bt, nu, nu, nu], dim=0)
-            row4 = torch.stack([0.5*U[i]*n@(n-id) - mu[i]*n, -t[i%p]*bt, -t[i%p]*bn, id], dim=0)
+            row4 = torch.stack([0.5*U[i]*n@(n-id) - mu[i]*n + F[i]*bt + F[i].conj()*bn, 
+                                -t[i%p]*bt, -t[i%p]*bn, id], dim=0)
             O = torch.stack([row1, row2, row3, row4], dim=0)
             if i == 0:
                 Os.append(O[None,-1,:,:,:])
@@ -211,6 +224,9 @@ class BoseHubburd(BosonChain):
                 Os.append(O)
         return MPO(Os)
     
+    def Liouvillian(self):
+        return super().Liouvillian(self.H_full(), *self.L_full())
+
     def energy(self, psi: LPTN):
         """the energy (expectaton value of the Hamiltonian) of the system"""
         assert len(psi) == self._N
@@ -239,6 +255,15 @@ class BoseHubburd(BosonChain):
         else:
             return nums_sq - nums**2
     
+    def parameters(self):
+        return {'N': self._N, 
+                'd': self.d, 
+                't': self.t, 
+                'U': self.U, 
+                'mu': self.mu, 
+                'F': self.F, 
+                'gamma': self.gamma} 
+
 class DDBH(BoseHubburd):
     r"""class for driven-dissipative Bose-Hubburd model
     .. math ::
@@ -255,54 +280,11 @@ class DDBH(BoseHubburd):
                  F: float | Sequence[float], 
                  gamma: float | Sequence[float],
                  l_ops: torch.Tensor | Sequence[torch.Tensor] = None) -> None:
+        warnings.warn("DDBH is deprecated and will be removed in future versions. Please use BoseHubburd instead.", DeprecationWarning, stacklevel=2)
         # dtype must be set to double here to ensure accuracy when prepare the 
         # unitary time evolution operator and the Kraus operators
-        super().__init__(N, d, t, U, mu, gamma, l_ops)
-        self.F = self.init_onsites(F, N)
+        super().__init__(N, d, t, U, mu, F=F, gamma=gamma, l_ops=l_ops)
 
-    @property
-    def h_ops(self):
-        bt, bn, id = self.bt, self.bn, self.bid
-        F = self.F
-        h_list = super().h_ops
-        # add the driving term
-        for i in range(self._N - 1):
-            FL = 0.5 * F[i]
-            FR = 0.5 * F[i+1]
-            if i == 0: # first bond
-                FL = F[i]
-            if i + 1 == self._N - 1: # last bond
-                FR = F[i+1]
-            h_list[i] += FL * torch.kron(bt, id) \
-                       + FR * torch.kron(id, bt) \
-                       + FL.conj() * torch.kron(bn, id) \
-                       + FR.conj() * torch.kron(id, bn)
-        return h_list
-    
-    @property
-    def mpo(self):
-        F = self.F
-        bt, bn= self.bt, self.bn
-        h_mpo = super().mpo
-        # add the driving term
-        for i in range(self._N):
-            h_mpo[i][-1,0] += (F[i]*bt + F[i].conj()*bn)
-        return h_mpo
-
-    @property
-    def Liouvillian(self):
-        return super().Liouvillian(self.H_full(), *self.L_full())
-    
-    def parameters(self):
-        return {'N': self._N, 
-                'd': self.d, 
-                't': self.t, 
-                'U': self.U, 
-                'mu': self.mu, 
-                'F': self.F, 
-                'gamma': self.gamma, 
-                'dtype': self.dtype}
-    
 class InfiniteDDBH(DDBH):
 
     def __init__(self, 
